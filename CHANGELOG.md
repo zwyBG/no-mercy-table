@@ -4,7 +4,7 @@
 
 - Match the table background to the page, remove the outer frame, widen and raise the game area, and keep instant-deal controls outside the player seating area.
 - Center a smaller hand count in the tray header and group icon-only layout and arrangement controls beside it. Preserve tooltips, accessible names, and manual tray resizing.
-- Display each player's remaining hand size in a colored numeric badge, including disconnected and autoplay seats. Highlight hands approaching the 25-card knockout threshold.
+- Display opponents' remaining hand sizes in colored numeric badges, including disconnected and autoplay seats. Highlight hands approaching the 25-card knockout threshold; keep the local player's count only in the hand-tray header.
 - Add a feedback form with nickname and message fields, validated and deduplicated D1 storage, and owner-only review through Cloudflare D1 Studio.
 - Lock turn-advancing actions during announcements and card animations on both client and server. Bots wait for the same presentation deadline, and returning tabs skip stale announcements.
 

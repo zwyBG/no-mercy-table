@@ -19,6 +19,7 @@
 .seat-count[data-level=warning] { background:#fff0d5; color:#9e651b; border-color:#e8c994; }.seat-count[data-level=danger] { background:#ffe0dc; color:#ae4b40; border-color:#e9aaa1; }
 .seat-count[data-level=uno] { background:#d9efe5; color:#317559; border-color:#a7cfba; }.seat-count[data-level=out] { background:#e5e8ed; color:#7b8390; border-color:#cbd1da; }
 .board-game .seat-status>small { font-size:8px; color:#77859a; }
+.board-game .seat-status:empty { display:none; }
 .board-game .mini-hand { display:none; }
 .board-game .game-center,.board-game .dealing-center { top:calc(50% - var(--scene-shift)); }
 .board-game .game-center .turn-label,.board-game .game-center .current-color,.board-game .game-center .penalty-hint,.board-game .game-center .pending-hint,.board-game .game-center .resolution-hint,.board-game .game-center .knockout-hint { display:none; }
