@@ -16,15 +16,14 @@ export function sendSocial(room: Room, actor: string, target: unknown, kind: unk
   assertSocial(to && to.id !== actor, "请选择另一位玩家");
   assertSocial(room.status === "playing" && room.game, "开局后，点玩家头像就能互动");
   assertSocial(!room.pause, "牌局暂停中，先歇一会儿");
-  assertSocial(!room.game?.pending && !room.game?.drawing && !room.game?.transfer && !room.game?.knockout && (room.presentationUntil || 0) <= now, "等当前牌桌动画和操作完成，再整活");
+  assertSocial(!room.game?.pending && !room.game?.drawing && !room.game?.knockout, "等当前牌桌操作完成，再整活");
   const previous = room.social;
   assertSocial(!previous?.sent[actor] || now - previous.sent[actor] >= SOCIAL_COOLDOWN, "道具冷却中，过几秒再来");
   assertSocial(!previous?.lastAt || now - previous.lastAt >= SOCIAL_ROOM_COOLDOWN, "上一波互动还在收尾，稍等一下");
   const event: SocialEvent = { id: crypto.randomUUID(), kind: kind as SocialKind, from: actor, to: to!.id, fromName: from!.name, toName: to!.name, at: now };
   const sent = Object.fromEntries(room.players.filter(p => previous?.sent[p.id] && now - previous.sent[p.id] < SOCIAL_COOLDOWN).map(p => [p.id, previous!.sent[p.id]]));
   room.social = { events: [...(previous?.events || []).filter(e => now - e.at < 12000), event].slice(-8), sent: { ...sent, [actor]: now }, lastAt: now };
-  // Social animations use the same turn gate; they never enter the card/voice queue.
-  room.presentationUntil = now + SOCIAL_DURATION + 120;
+  // Cosmetic only. New card actions may interrupt this prop immediately.
   return room;
 }
 

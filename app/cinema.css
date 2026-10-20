@@ -31,7 +31,7 @@
 @keyframes attack-story { from { opacity:0; translate:0 18px; } to { opacity:1; translate:0 0; } }
 
 .exchange-gather .hand-card { animation-duration:2800ms; }
-.exchange-spread .hand-card { animation-duration:650ms; }
+.exchange-spread .hand-card { animation-duration:650ms; pointer-events:auto; }
 .exchange-receive .hand-card-arriving { animation:received-card .35s cubic-bezier(.12,.8,.3,1.3) both; }
 .app-shell[data-paused=true] .exchange-gather .hand-card { animation:hand-gather-from 2800ms both paused; animation-delay:var(--exchange-offset); }
 .app-shell[data-paused=true] .exchange-gather.exchange-to .hand-card { animation-name:hand-gather-to; }

@@ -31,7 +31,7 @@ export class RoomHub extends DurableObject<Cloudflare.Env> {
     const offline = await this.ctx.storage.list<number>({ prefix: "offline:" });
     for (const ws of this.seats()) {
       const id = (ws.deserializeAttachment() as Seat).player!;
-      if (!row.room.players.some(p => p.id === id)) { this.send(ws, { type: "expired", error: "你已离开牌桌" }); ws.close(1000); continue; }
+      if (!row.room.players.some(p => p.id === id && !p.removed)) { this.send(ws, { type: "expired", error: "你已离开或被移出牌桌" }); ws.close(1000); continue; }
       const view = publicView(row.room, id, seen, row.version);
       view.players = view.players.map(p => ({ ...p, online: p.bot || p.online && !(offline.has(`offline:${p.id}`) && (seen[p.id] || 0) <= offline.get(`offline:${p.id}`)!) }));
       this.send(ws, { type: "view", view });
@@ -79,7 +79,7 @@ export class RoomHub extends DurableObject<Cloudflare.Env> {
     if (!seat.player) {
       if (data.type !== "auth" || typeof data.token !== "string" || data.token.length > 200) { ws.close(1008); return; }
       const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data.token)))).map(x => x.toString(16).padStart(2, "0")).join("");
-      const p = row.room.players.find(p => p.tokenHash === hash && !p.bot);
+      const p = row.room.players.find(p => p.tokenHash === hash && !p.bot && !p.removed);
       if (!p) { this.send(ws, { type: "expired", error: "座位凭证已失效，请重新加入" }); ws.close(1008); return; }
       ws.serializeAttachment({ ...seat, player: p.id });
       await this.ctx.storage.delete(`offline:${p.id}`);

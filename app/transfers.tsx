@@ -48,9 +48,11 @@ export function CardDeliveries({ view, children, renderFace, onBusy }: { view: V
   useEffect(() => {
     const oldHand = last.current.hand; last.current.hand = view?.hand.map(c => c.id) || [];
     if (last.current.scope !== scope) { last.current = { scope, id: delivery?.id || "", hand: last.current.hand }; setFlights([]); return; }
-    if (!delivery || delivery.id === last.current.id) return;
+    if (!delivery) {setFlights([]);return;}
+    if (delivery.id === last.current.id) return;
     const face = delivery.player === view?.me ? view.hand.findLast(c => !oldHand.includes(c.id)) : undefined;
-    last.current.id = delivery.id; setFlights(list => [...list.slice(-5), { ...delivery, face }]);
+    timers.current.forEach(clearTimeout);timers.current.clear();
+    last.current.id = delivery.id; setFlights([{ ...delivery, face }]);
     const timer = setTimeout(() => { setFlights(list => list.filter(d => d.id !== delivery.id)); timers.current.delete(timer); }, 1100); timers.current.add(timer);
   }, [scope, delivery?.id, view?.version]);
   useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);

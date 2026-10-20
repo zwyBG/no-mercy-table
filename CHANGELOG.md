@@ -1,5 +1,17 @@
 # Changelog
 
+## v2026.10.20.9 — 2026-10-20
+
+- Add the zero owner's choice to rotate active players' hands in the current direction or keep their hands. Preserve exact manual order when keeping hands; record the public decision in replay and support bot choices. A final zero that empties a hand keeps the existing immediate placement behavior.
+- Remove persistent autoplay status labels while preserving opt-in autoplay and the management-menu reclaim control.
+- Rebase harmless concurrent room updates against current state, retry bounded compare-and-swap conflicts, deduplicate accepted requests, and reject genuinely changed turn intent. Coalesce manual sorting requests without discarding newly received cards.
+- Let new gameplay, delivery, social, and voice effects interrupt earlier presentation instead of accumulating a queue. Remove animation-only action gates on clients, the server, and bots; keep actual dealing, progressive draw, choice, pause, and knockout rules.
+- Grant live hand spectating to voluntary withdrawals as well as winners and knockouts. Offer withdrawal with continued viewing and preserve seat credentials for a later spectator reconnect.
+- Add persistent per-room scores, exactly-once completed-round settlement, negative totals, compact seat totals, and a scored final ranking. For 3–6 players award two-point steps down to zero for the penultimate place, then −1 for last place. Rank finishers first, followed by reverse knockout/withdrawal order, with the final active player last.
+- Start subsequent rounds with the previous first-place finisher when still seated, with the original lobby starter as fallback.
+- Add confirmed host removal in the lobby and game-management menu. Preserve cards and ongoing choices safely, revoke removed-seat HTTP and WebSocket access, and clear removed seats at the next lobby reset.
+- Add regression coverage for score schedules, persistence and deduplication, next-round starters, withdrawal spectating, host permissions, seat revocation, and removal during timed or pending work.
+
 ## v2026.10.20.8 — 2026-10-20
 
 - Add five original avatar props: tomato splats, water buckets, rubber-duck spectators, spring gloves, and rainbow confetti, with distinct flights, reactions, captions, and synthesized sounds.

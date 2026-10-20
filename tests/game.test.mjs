@@ -51,7 +51,7 @@ test('classic seven swaps complete hands', () => {
 });
 test('zero passes whole hands in chosen direction', () => {
   const r = fresh(), zero = card('red', 0), a = card(), b = card(), c = card(); hands(r, [zero, a], [b], [c]);
-  applyAction(r, 'A', { type: 'play', card: zero.id }); assert.equal(r.players[1].hand[0].id, a.id); assert.equal(r.players[2].hand[0].id, b.id); assert.equal(r.players[0].hand[0].id, c.id);
+  applyAction(r, 'A', { type: 'play', card: zero.id }); assert.equal(r.game.pending.kind,'zero'); applyAction(r,'A',{type:'chooseZero',rotate:true}); assert.equal(r.players[1].hand[0].id, a.id); assert.equal(r.players[2].hand[0].id, b.id); assert.equal(r.players[0].hand[0].id, c.id);
 });
 test('discard-all does not trigger actions on buried cards', () => {
   const r = fresh(), discard = card('red', 0, 'discard'), kept = card('blue', 2); hands(r, [discard, card('red', 7), card('red', 0), kept]); applyAction(r, 'A', { type: 'play', card: discard.id }); assert.deepEqual(r.players[0].hand.map(c => c.id), [kept.id]); assert.equal(r.game.pending, null); assert.equal(r.game.turn, 'B'); assert.equal(r.game.discard.at(-1).id, discard.id);
@@ -100,6 +100,7 @@ test('multiple complete games conserve all 168 cards through action chains, knoc
       if (pending?.kind === 'target') applyAction(r, pending.actor, { type: 'target', target: r.players.find(p => !p.out && !p.finished && p.id !== pending.actor).id });
       else if (pending?.kind === 'take' || pending?.kind === 'return') applyAction(r, pending.kind === 'take' ? pending.actor : pending.target, { type: 'pick', index: 0 });
       else if (pending?.kind === 'roulette') applyAction(r, pending.actor, pending.color ? { type: 'drawRoulette' } : { type: 'color', color: COLORS[steps % 4] });
+      else if (pending?.kind === 'zero') applyAction(r,pending.actor,{type:'chooseZero',rotate:steps%2===0});
       else { const p = r.players.find(p => p.id === g.turn), card = p.hand.find(c => canPlay(r, c)); applyAction(r, p.id, card ? { type: 'play', card: card.id, color: COLORS[steps % 4], uno: true } : { type: 'draw', uno: true }); }
       const all = [...g.deck, ...g.discard, ...g.retired, ...r.players.flatMap(p => p.hand)]; assert.equal(all.length, 168); assert.equal(new Set(all.map(c => c.id)).size, 168);
     } assert.equal(r.status, 'finished', 'game should reach a winner');
@@ -249,15 +250,15 @@ test('explicit auto-arrange groups colors, sorts numbers, randomly places draw c
   positions.add(sorted.map(c=>drawValue(c)?c.id:'_').join(','));
  }assert.ok(positions.size>1);
 });
-test('whole-hand exchanges reserve an animation interval and expose only public transfer metadata', () => {
+test('whole-hand exchanges expose only public animation metadata and the next play may interrupt the flight', () => {
  const r=fresh('swap'),seven=card('red',7);hands(r,[seven,card('red',6),card('blue',2)],[card('green',1),card('blue',4),card('yellow',9)]);perform(r,'A',{type:'play',card:seven.id});perform(r,'A',{type:'target',target:'B'});
  const t=r.game.transfer;assert.equal(t.kind,'swap');assert.equal(t.from,'A');assert.equal(t.to,'B');assert.equal(t.fromCount,2);assert.equal(t.toCount,3);assert.equal(r.players[0].hand.length,3);assert.equal(r.players[1].hand.length,2);
- assert.throws(()=>perform(r,'B',{type:'play',card:r.players[1].hand[0].id}),/换牌动画/);assert.equal(publicView(r,'B',{},1).game.playable.length,0);r.players[1].bot=true;assert.equal(botAction(r),null);
+ assert.ok(publicView(r,'B',{},1).game.playable.length);r.players[1].bot=true;assert.ok(botAction(r));
  const visible=publicView(r,'C',{},1).game.transfer;assert.deepEqual(Object.keys(visible).sort(),['duration','from','fromCount','id','kind','remainingMs','to','toCount'].sort());
- assert.equal(advanceRoom(r,t.startedAt+t.duration-1),false);assert.equal(advanceRoom(r,t.startedAt+t.duration),true);assert.equal(r.game.transfer,null);assert.ok(botAction(r));
+ performRaw(r,'B',{type:'play',card:r.players[1].hand[0].id},{hostOffline:false,automated:true});assert.equal(r.game.transfer,null);assert.equal(r.game.turn,'C');
 });
-test('each reciprocal seven pick has a directed flight and waits before the other player can pick', () => {
+test('each reciprocal seven pick has a directed flight that the return pick can replace immediately', () => {
  const r=fresh('trade'),seven=card('red',7);hands(r,[seven,card('yellow',1)]);perform(r,'A',{type:'play',card:seven.id});perform(r,'A',{type:'target',target:'B'});perform(r,'A',{type:'pick',index:0});
- let t=r.game.transfer;assert.equal(t.kind,'take');assert.equal(t.from,'B');assert.equal(t.to,'A');assert.equal(r.game.pending.kind,'return');assert.throws(()=>perform(r,'B',{type:'pick',index:0}),/换牌动画/);
- advanceRoom(r,t.startedAt+t.duration);perform(r,'B',{type:'pick',index:0});t=r.game.transfer;assert.equal(t.kind,'return');assert.equal(t.from,'A');assert.equal(t.to,'B');assert.equal(r.game.pending,null);assert.equal(r.game.turn,'B');advanceRoom(r,t.startedAt+t.duration);assert.equal(r.game.transfer,null);
+ let t=r.game.transfer;assert.equal(t.kind,'take');assert.equal(t.from,'B');assert.equal(t.to,'A');assert.equal(r.game.pending.kind,'return');
+ performRaw(r,'B',{type:'pick',index:0});t=r.game.transfer;assert.equal(t.kind,'return');assert.equal(t.from,'A');assert.equal(t.to,'B');assert.equal(r.game.pending,null);assert.equal(r.game.turn,'B');advanceRoom(r,t.startedAt+t.duration);assert.equal(r.game.transfer,null);
 });

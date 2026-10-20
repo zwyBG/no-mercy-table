@@ -82,6 +82,7 @@ export function useSocialEffects(source: Source, sound: SocialSound) {
     const latest = fresh.filter(e => e.ageMs < SOCIAL_DURATION).at(-1);
     if (latest) setActive(latest);
     else if (cursor.current.paused !== !!source?.pause) setActive(old => events.find(e => e.id === old?.id && e.ageMs < SOCIAL_DURATION) || null);
+    else setActive(old=>events.some(e=>e.id===old?.id)?old:null);
     cursor.current.paused = !!source?.pause;
   }, [source?.code, source?.version]);
   useEffect(() => {
@@ -104,7 +105,7 @@ export function SocialPicker({ name, busy, waiting, cooldownMs, receivedAt, send
   const disabled = busy || waiting || remaining > 0;
   return <div className="social-picker"><p>给 <strong>{name}</strong> 一点小小的震撼。</p><div className="social-props">
     {SOCIAL_KINDS.map(kind => <button key={kind} className={`social-prop prop-${kind}`} disabled={disabled} onClick={() => send(kind)}><PrankIcon kind={kind} /><strong>{PROPS[kind].name}</strong><small>{PROPS[kind].hint}</small></button>)}
-  </div><div className="social-picker-note" role="status">{busy ? "准备发射…" : waiting ? "等牌桌当前的动画和操作完成" : remaining > 0 ? `补充弹药中 · ${Math.ceil(remaining / 1000)} 秒` : "点一个，整点活。"}</div></div>;
+  </div><div className="social-picker-note" role="status">{busy ? "准备发射…" : waiting ? "等当前换牌选择或抽牌完成" : remaining > 0 ? `补充弹药中 · ${Math.ceil(remaining / 1000)} 秒` : "点一个，整点活。"}</div></div>;
 }
 
 export function SocialAnimation({ event, me, paused }: { event: Event; me?: string; paused: boolean }) {

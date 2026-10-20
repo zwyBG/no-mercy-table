@@ -38,7 +38,7 @@ test('finished players are skipped by reverse, zero rotation, seven targets and 
   r.players[1].hand=[reverse,zero,kept]; r.players[2].hand=[card(4,'green'),card(5,'green')];
   act('A',{type:'play',card:r.players[0].hand[0].id});
   act('B',{type:'play',card:reverse.id}); assert.equal(r.game.turn,'B');
-  const received=r.players[2].hand.map(c=>c.id); act('B',{type:'play',card:zero.id});
+  const received=r.players[2].hand.map(c=>c.id); act('B',{type:'play',card:zero.id});act('B',{type:'chooseZero',rotate:true});
   assert.deepEqual(r.players[1].hand.map(c=>c.id),received); assert.deepEqual(r.players[2].hand,[kept]); assert.deepEqual(r.players[0].hand,[]);
   const seven=card(7); r.players[2].hand=[seven,card(6)]; r.game.color='red';
   act('C',{type:'play',card:seven.id}); assert.throws(()=>act('C',{type:'target',target:'A'}),/在局/);

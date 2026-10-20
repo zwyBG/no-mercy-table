@@ -5,8 +5,8 @@ export const TRANSFER_TIMING = {
 export type AttackCue = { from: string; to: string; fromName: string; toName: string; amount: number; total: number; chain: number[] };
 export type EffectEvent = { id: number; text: string; effect?: string; cue?: AttackCue };
 
-// Shared with the server: even muted clients keep the same turn cadence.
-// These cover the complete announcement WAVs at 0.92 playback speed.
+// Visual/audio lifetimes only. They never delay a legal game action.
+// These cover complete announcement WAVs when no newer action interrupts.
 export function effectDuration(kind: string): number {
   if (kind === "play") return 180;
   if (kind === "take") return 100;
@@ -17,9 +17,9 @@ export function effectDuration(kind: string): number {
   return 1200;
 }
 export const DRAW_DELIVERY_DURATION = 1100;
-export const ADVANCING_ACTIONS = new Set(["play", "draw", "uno", "catch", "chooseSeven", "skipSeven", "target", "pick", "color", "drawRoulette", "reset", "start"]);
+export const ADVANCING_ACTIONS = new Set(["play", "draw", "uno", "catch", "chooseZero", "chooseSeven", "skipSeven", "target", "pick", "color", "drawRoulette", "reset", "start"]);
 
-// One active event survives later updates; subsequent effects wait in log order.
+// Keep only the latest event. A newer action replaces the active effect.
 export class EffectQueue {
   scope = "";
   last = 0;
@@ -27,7 +27,8 @@ export class EffectQueue {
   pending: EffectEvent[] = [];
   sync(scope: string, logs: EffectEvent[]) {
     if (scope !== this.scope) { this.scope = scope; this.last = logs.at(-1)?.id || 0; this.active = null; this.pending = []; return true; }
-    this.pending.push(...logs.filter(e => e.id > this.last && e.effect));
+    const latest=logs.filter(e=>e.id>this.last&&e.effect).at(-1);
+    if(latest) {this.active=null;this.pending=[latest];}
     this.last = logs.at(-1)?.id || this.last;
     return false;
   }

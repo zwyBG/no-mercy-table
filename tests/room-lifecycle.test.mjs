@@ -38,7 +38,7 @@ test('temporary autoplay is opt-in, can be reclaimed, and cannot be enabled for 
   assert.throws(() => applyAction(r, 'A', { type: 'autoplay', target: 'B', enabled: true }), /离线/);
   applyAction(r, 'A', { type: 'autoplay', enabled: true });
   assert.ok(botAction(r));
-  assert.throws(() => applyAction(r, 'A', { type: 'draw' }), /托管/);
+  assert.throws(() => applyAction(r, 'A', { type: 'draw' }), /接管手牌/);
   const step = botAction(r); applyAction(r, step.id, step.action, { hostOffline: false, automated: true });
   applyAction(r, 'A', { type: 'autoplay', enabled: false });
   assert.equal(r.players[0].autoplay, false);

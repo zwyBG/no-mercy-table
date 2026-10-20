@@ -14,7 +14,7 @@ function setup(t) {
 }
 const send = (r, actor = 'A', target = 'B', kind = 'tomato') => applyAction(r, actor, { type: 'social', target, kind });
 
-test('all five props use the same public broadcast and animation gate', t => {
+test('all five props use the same public broadcast without locking the turn', t => {
   const {room:r,at,now} = setup(t);
   for (const kind of SOCIAL_KINDS) {
     const before = structuredClone(r.game); send(r,'A','B',kind);
@@ -35,7 +35,7 @@ test('social props broadcast public attribution without changing hands, turns, r
   assert.equal(JSON.stringify(view).includes('private-'), false); assert.equal('sent' in view.social, false);
   assert.equal(view.social.cooldownMs, 0); assert.equal(view.social.roomCooldownMs, SOCIAL_ROOM_COOLDOWN);
   assert.equal(publicView(r, 'A', {}, 7).social.cooldownMs, SOCIAL_COOLDOWN);
-  assert.throws(() => applyAction(r, 'A', { type: 'draw' }), /动画/);
+  applyAction(r,'A',{type:'draw'});assert.equal(r.game.drawing.player,'A');assert.deepEqual(r.social.events,[]);
 });
 
 test('props validate seated actors, targets and kinds; paused or unfinished card effects reject interaction', t => {
@@ -48,7 +48,7 @@ test('props validate seated actors, targets and kinds; paused or unfinished card
   send(r, 'A', 'B', 'water'); assert.equal(r.social.events[0].kind, 'water');
 });
 
-test('server cooldowns prevent animation backlogs and clear the shared turn gate at completion', t => {
+test('server cooldowns limit prop spam without a shared turn gate', t => {
   const { room: r, at, now } = setup(t), start = now(); send(r);
   at(start + SOCIAL_DURATION + 120); assert.equal(publicView(r, 'A', {}, 1).animation, null);
   assert.throws(() => send(r, 'C', 'B'), /收尾/);
@@ -67,5 +67,5 @@ test('pause and resume preserve social playback and cooldown time, while older r
   applyAction(r, 'A', { type: 'pause', paused: false });
   assert.equal(publicView(r, 'A', {}, 1).social.events[0].ageMs, 800);
   assert.equal(publicView(r, 'A', {}, 1).social.cooldownMs, SOCIAL_COOLDOWN - 800);
-  at(r.presentationUntil); assert.equal(publicView(r, 'A', {}, 1).animation, null);
+  assert.equal(publicView(r, 'A', {}, 1).animation, null);
 });

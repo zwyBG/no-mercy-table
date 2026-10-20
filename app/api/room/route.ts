@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { advanceRoom, applyAction, botAction, createRoom, log, publicView, DEFAULT_CONFIG, type Room, type Player, type Action } from "@/lib/game";
+import { commitRoomAction } from "@/lib/room-commit";
 
 export const dynamic = "force-dynamic";
 const response = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store, private", "X-Content-Type-Options": "nosniff" } });
@@ -29,7 +30,7 @@ async function publish(code: string) {
 async function touch(code: string, player: string) { await database().prepare("INSERT INTO presence (room, player, seen) VALUES (?, ?, ?) ON CONFLICT(room, player) DO UPDATE SET seen = excluded.seen").bind(code, player, Date.now()).run(); }
 async function authorized(request: Request, room: Room) {
   const token = request.headers.get("Authorization")?.replace(/^Bearer /, ""); if (!token || token.length > 200) return null;
-  const digest = await hash(token); return room.players.find(p => p.tokenHash === digest) || null;
+  const digest = await hash(token); return room.players.find(p => p.tokenHash === digest && !p.removed) || null;
 }
 export async function GET(request: Request) {
   try {
@@ -76,13 +77,17 @@ export async function POST(request: Request) {
       await publish(code); return response(publicView(room, p.id, timestamps, version + 1));
     }
     if (typeof a.actionId !== "string" || a.actionId.length > 100) return response({ error: "操作凭证无效" }, 400);
-    if (room.actions.includes(a.actionId)) return response(publicView(room, p.id, timestamps, version));
-    if (a.version !== version) return response({ error: "牌桌刚刚有变化，请重新操作", view: publicView(room, p.id, timestamps, version) }, 409);
-    applyAction(room, p.id, a, { hostOffline: Date.now() - (timestamps[room.host] || 0) > 45000, offlineIds: room.players.filter(q => !q.bot && Date.now() - (timestamps[q.id] || 0) > 45000).map(q => q.id) });
-    if (a.type !== "sort" && a.type !== "uno" && a.type !== "claimHost" && a.type !== "social") room.botAt = Date.now();
-    room.actions.push(a.actionId); room.actions = room.actions.slice(-100);
-    const saved = await database().prepare("UPDATE rooms SET state = ?, version = version + 1, updated_at = ? WHERE code = ? AND version = ?").bind(JSON.stringify(room), Date.now(), code, version).run();
-    if (!saved.meta.changes) return response({ error: "牌桌刚刚有变化，请重新操作" }, 409);
-    await publish(code); return response(publicView(room, p.id, timestamps, version + 1));
+    const committed = await commitRoomAction(row,p.id,a,current => ({hostOffline:Date.now()-(timestamps[current.host]||0)>45000,offlineIds:current.players.filter(q=>!q.bot&&Date.now()-(timestamps[q.id]||0)>45000).map(q=>q.id)}),{
+      read:()=>read(code),
+      save:async current => {
+        const result=await database().prepare("UPDATE rooms SET state = ?, version = version + 1, updated_at = ? WHERE code = ? AND version = ?").bind(JSON.stringify(current.room),Date.now(),code,current.version).run();
+        return !!result.meta.changes;
+      },
+    });
+    if(committed.conflict==="expired") return response({error:"座位凭证已失效，请重新加入"},401);
+    const view=publicView(committed.row.room,p.id,timestamps,committed.row.version);
+    if(committed.conflict) return response({error:committed.conflict==="changed"?"回合或手牌已更新，请按当前牌面操作":"正在同步本次操作，请稍后重试",retryable:committed.conflict==="busy",view},409);
+    if(committed.committed) await publish(code);
+    return response(view);
   } catch (e) { return response({ error: e instanceof Error ? e.message : "操作失败，请重试" }, 400); }
 }

@@ -18,14 +18,13 @@ function fresh(seven = 'swap') {
 }
 function drain(r) { for (let i = 0; i < 150 && advanceRoom(r, Date.now() + 10000 * (i + 1)); i++); }
 
-test('consecutive effects retain their order and cannot replace an active announcement', () => {
+test('new effects replace the active announcement and never build a playback backlog', () => {
   const q = new EffectQueue(); q.sync('first', [{ id: 1, text: 'old', effect: 'begin' }]);
   assert.equal(q.next(), null, 'joining does not replay old logs');
   q.sync('first', [{ id: 2, text: '+2', effect: 'draw2' }, { id: 3, text: '+4', effect: 'draw4' }]);
-  assert.equal(q.next().id, 2);
+  assert.equal(q.next().id, 3);assert.equal(q.pending.length,0);
   q.sync('first', [{ id: 3, text: '+4', effect: 'draw4' }, { id: 4, text: '+10', effect: 'draw10' }]);
-  assert.equal(q.next().id, 2); q.complete(); assert.equal(q.next().id, 3);
-  q.complete(); assert.equal(q.next().id, 4);
+  assert.equal(q.next().id, 4);assert.equal(q.pending.length,0);q.complete();assert.equal(q.next(),null);
   q.sync('other', [{ id: 99, text: 'old winner', effect: 'win' }]); assert.equal(q.next(), null);
 });
 

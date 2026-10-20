@@ -26,7 +26,7 @@ const EFFECTS: Record<string, { title: string; symbol: string; voice: string; to
   penalty: { title: "TAKE THE HIT!", symbol: "+", voice: "", tone: "orange", notes: [180, 120] },
 };
 const VOICES: Record<string, string> = { draw2: "announcer-add-two", draw4: "announcer-add-four", reverse4: "announcer-reverse-four", draw6: "announcer-add-six", draw10: "announcer-add-ten", skip: "announcer-skip", reverse: "announcer-reverse", skipall: "announcer-skip-all", discard: "announcer-discard", roulette: "announcer-roulette", seven: "announcer-seven", zero: "announcer-zero", uno: "announcer-uno", win: "announcer-win", out: "announcer-out", penalty: "announcer-penalty", begin: "announcer-begin" };
-type Source = { code: string; version: number; logs: import("@/lib/presentation").EffectEvent[]; pause?: unknown; game?: { round?: number; transfer?: unknown; deal?: { dealt: number } | null; drawing?: { drawn: number } | null } | null } | null;
+type Source = { code: string; version: number; logs: import("@/lib/presentation").EffectEvent[]; pause?: unknown; social?:{events:{id:string}[]}; game?: { round?: number; transfer?: unknown; deal?: { dealt: number } | null; drawing?: { drawn: number } | null } | null } | null;
 export type Visual = { id: number; kind: string; text: string; cue?: AttackCue; duration: number } | null;
 
 export function useTableEffects(source: Source) {
@@ -37,6 +37,7 @@ export function useTableEffects(source: Source) {
   const buffers = useRef(new Map<string, AudioBuffer>()), loading = useRef(false), activeVoices = useRef<AudioBufferSourceNode[]>([]);
   const progress = useRef({ code: "", dealt: 0, drawn: 0 }), generation = useRef(0), blocked = useRef(false), paused = useRef(false);
   const pumpRef = useRef<() => void>(() => {});
+  const priorPlayback = useRef({social:"",paused:false});
   enabled.current = sound; blocked.current = false; paused.current = !!source?.pause;
   const stopVoices = () => { for (const voice of activeVoices.current) { try { voice.stop(); } catch {} } activeVoices.current = []; };
   const loadVoices = () => {
@@ -126,9 +127,14 @@ export function useTableEffects(source: Source) {
   };
   useEffect(() => {
     if (!source) { queue.current = new EffectQueue(); if (timer.current) clearTimeout(timer.current); timer.current = null; stopVoices(); setVisual(null); setPendingCount(0); return; }
-    const reset = queue.current.sync(source.code, source.logs);
+    const previous=queue.current.active, priorLog=queue.current.last;
+    const reset = queue.current.sync(source.code, source.logs), social=source.social?.events.at(-1)?.id||"";
+    const newSocial=!!social&&social!==priorPlayback.current.social&&!reset, pauseChanged=priorPlayback.current.paused!==!!source.pause;
+    priorPlayback.current={social,paused:!!source.pause};
+    if(newSocial) queue.current.clear();
+    if(previous&&!pauseChanged&&queue.current.last>priorLog&&queue.current.active===previous) queue.current.active=null;
     if (document.hidden) { if (timer.current) clearTimeout(timer.current); timer.current = null; queue.current.clear(); stopVoices(); setVisual(null); setPendingCount(0); setCompleted(queue.current.last); return; }
-    if (reset) { if (timer.current) clearTimeout(timer.current); timer.current = null; stopVoices(); setVisual(null); setCompleted(queue.current.last); }
+    if (reset || newSocial || previous && previous !== queue.current.active) { if (timer.current) clearTimeout(timer.current); timer.current = null; stopVoices(); setVisual(null); setCompleted(previous?.id || queue.current.last); }
     const dealt = source.game?.deal?.dealt || 0, drawn = source.game?.drawing?.drawn || 0;
     if (!paused.current && !queue.current.active && progress.current.code === source.code && (dealt > progress.current.dealt || drawn > progress.current.drawn)) play("take");
     progress.current = { code: source.code, dealt, drawn };
@@ -151,7 +157,7 @@ export function useTableEffects(source: Source) {
     unlock(); const gen = generation.current;
     if (context.current && !buffers.current.has("announcer-add-ten") && enabled.current) { try { const res = await fetch("/audio/announcer-add-ten.wav"); if (res.ok) buffers.current.set("announcer-add-ten", await context.current.decodeAudioData(await res.arrayBuffer())); } catch {} }
     if (gen !== generation.current) return;
-    queue.current.pending.push({ id: -Date.now(), text: "特效预览 · 累计罚抽 16 张", effect: "draw10", cue: source?.logs.findLast(e => e.effect === "draw10" && e.cue)?.cue || { from: "preview-a", to: "preview-b", fromName: "你", toName: "下一家", amount: 10, total: 16, chain: [2, 4, 10] } }); setPendingCount(queue.current.pending.length + (queue.current.active ? 1 : 0)); pumpRef.current();
+    skip(); queue.current.pending.push({ id: -Date.now(), text: "特效预览 · 累计罚抽 16 张", effect: "draw10", cue: source?.logs.findLast(e => e.effect === "draw10" && e.cue)?.cue || { from: "preview-a", to: "preview-b", fromName: "你", toName: "下一家", amount: 10, total: 16, chain: [2, 4, 10] } }); setPendingCount(1); pumpRef.current();
   };
   const skip = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; queue.current.clear(); stopVoices(); setVisual(null); setPendingCount(0); setCompleted(queue.current.last); };
   useEffect(() => { const hide = () => { if (document.hidden) skip(); }; document.addEventListener("visibilitychange", hide); return () => document.removeEventListener("visibilitychange", hide); }, []);

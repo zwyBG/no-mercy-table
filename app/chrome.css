@@ -46,6 +46,11 @@
 .feedback-success>span { display:grid; place-items:center; margin:0 auto 14px; width:48px; height:48px; background:#edf4ef; color:#6c957f; border-radius:50%; }
 .feedback-success h3 { font-size:19px; margin:0 0 9px; }.feedback-success p { font-size:12px; color:#8a94a3; line-height:1.8; margin-bottom:25px; }
 .animation-wait { color:#9a87ad!important; }
+.seat-status { display:inline-flex; align-items:center; justify-content:center; gap:5px; }.seat-score { display:inline-flex; align-items:baseline; gap:3px; color:#4f7d69; font-size:10px; font-weight:650; line-height:1.2; font-variant-numeric:tabular-nums; }.seat-score small { font-size:8px; font-weight:400; color:#85928d; }.seat-score[data-negative=true] { color:#af695b; }
+.player-score { margin-left:6px; color:#658772; font-size:10px; font-weight:500; white-space:nowrap; }.player-score[data-negative=true] { color:#af695b; }
+.host-kick-list { border-top:1px solid #e3e7ee; padding-top:9px; margin-top:8px; }.host-kick-list>small { color:#8994a4; font-size:10px; }.host-kick-list>div { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:5px; font-size:11px; }.host-kick-list>div>span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.host-kick-list button { width:auto; flex:none; color:#ac6d60; padding:7px!important; font-size:10px; }
+.match-menu-panel { max-height:min(65dvh,500px); overflow:auto; }.seat-score+.mini-hand { display:none; }
+.ranking-row>span { display:flex; flex-direction:column; gap:4px; }.ranking-row>span>small { font-size:10px; font-weight:400; color:#8a95a5; }.ranking-points { display:flex; flex-direction:column; align-items:flex-end; gap:3px; white-space:nowrap; }.ranking-points strong { color:#5b9276; font-size:19px; font-variant-numeric:tabular-nums; }.ranking-points[data-negative=true] strong { color:#b57663; }.ranking-points small { font-size:10px; color:#8895a7; }.score-rule-hint { font-size:10px; line-height:1.8; color:#8b96a5; margin:10px 0 0; }
 @media(max-width:1000px) { .top-actions { gap:12px; }.top-actions .feedback-button>span { display:none; } }
 @media(max-width:760px) {
   .app-shell:not([data-phase=home]):not([data-phase=lobby]) .top-actions { gap:9px; }

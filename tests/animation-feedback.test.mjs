@@ -15,24 +15,23 @@ function table() {
   advanceRoom(r, r.presentationUntil); r.game.discard = [card('top')]; r.game.color = 'red'; return r;
 }
 
-test('next moves and bots wait for the shared animation deadline; expired gates publish an unlock', t => {
+test('legal moves interrupt announcements immediately and bots keep their normal thinking cadence', t => {
   let clock = 100000; t.mock.method(Date, 'now', () => clock);
   const r = table(); r.players[0].hand = [card('ten', 'wild', 'draw10'), card('kept')];
   r.players[1].hand = [card('reply', 'wild', 'draw10'), card('other')]; r.players[1].bot = true;
   applyAction(r, 'A', { type: 'play', card: 'ten', color: 'red', uno: true }); const until = r.presentationUntil;
   assert.ok(presentationRemaining(r) >= effectDuration('draw10'));
-  assert.equal(nextRoomWake(r), until); assert.equal(botAction(r), null);
-  const before = structuredClone(r);
-  assert.throws(() => applyAction(r, 'B', { type: 'draw' }), /动画播放完成/); assert.deepEqual(r, before);
+  assert.equal(nextRoomWake(r), clock+1100); assert.ok(botAction(r));
   assert.ok(publicView(r, 'B', {}, 1).animation.remainingMs > 0);
   applyAction(r, 'B', { type: 'sort', order: ['other', 'reply'] });
-  clock = until - 1; assert.equal(advanceRoom(r, clock), false); assert.equal(botAction(r), null);
-  clock = until; assert.equal(advanceRoom(r, clock), true); assert.equal(publicView(r, 'B', {}, 2).animation, null);
   const next = botAction(r); assert.ok(next); applyAction(r, next.id, next.action, { hostOffline: false, automated: true });
   assert.equal(r.game.penalty, 20);
+  assert.equal(r.presentationUntil,until,'new announcements replace rather than add their durations');
+  applyAction(r,'C',{type:'draw'});assert.equal(r.game.drawing.player,'C');
+  clock=r.game.drawing.nextAt;assert.equal(advanceRoom(r,clock),true);assert.equal(r.game.drawing.drawn,1);
 });
 
-test('pause freezes animation time and roulette draws wait for their individual card flight', t => {
+test('pause freezes timing while deliberate roulette draws may replace a still-flying card', t => {
   let clock = 200000; t.mock.method(Date, 'now', () => clock);
   const r = table(); r.players[0].hand = [card('wheel', 'wild', 'roulette'), card('kept')];
   applyAction(r, 'A', { type: 'play', card: 'wheel' }); const until = r.presentationUntil;
@@ -42,9 +41,9 @@ test('pause freezes animation time and roulette draws wait for their individual 
   clock = r.presentationUntil; advanceRoom(r, clock);
   applyAction(r, 'B', { type: 'color', color: 'blue' }); r.game.deck = [card('stop', 'blue'), card('not-yet', 'yellow')];
   applyAction(r, 'B', { type: 'drawRoulette' }); assert.ok(presentationRemaining(r) >= DRAW_DELIVERY_DURATION);
-  assert.throws(() => applyAction(r, 'B', { type: 'drawRoulette' }), /动画播放完成/);
-  assert.equal(r.game.pending.drawn, 1); clock = r.presentationUntil; advanceRoom(r, clock);
+  assert.equal(r.game.pending.drawn, 1);const first=r.game.delivery.id;
   applyAction(r, 'B', { type: 'drawRoulette' }); assert.equal(r.game.pending, null); assert.equal(r.game.turn, 'C');
+  assert.notEqual(r.game.delivery.id,first);
 });
 
 test('server presentation durations cover every voice asset, including the complete reverse +4', () => {

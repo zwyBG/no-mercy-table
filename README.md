@@ -4,13 +4,15 @@ A real-time, room-code multiplayer card game for 3–6 players, deployed on Clou
 
 **Play:** https://no-mercy-table.passion-fruit.workers.dev/
 
-**Release:** v2026.10.20.8
+**Release:** v2026.10.20.9
 
 Click another player's avatar for five original cartoon props: tomato, water bucket, rubber ducks, spring glove, and rainbow confetti. All seated players see the same attributed event, with shared animation timing and server-enforced cooldowns. Props preserve hands, turns, card logs and match replays. They support pause/resume, the existing mute setting and reduced motion. No production database migration is required.
 
-Rounds now continue after each successful finisher. Finishers receive places in order and leave the turn/exchange rotation; the final active player is the last-place loser. A final draw attack or roulette resolves fully before granting a place, and a returned penalty can cancel a provisional finish. Knockouts are listed separately. Finished and knocked-out players automatically become spectators: expand the bottom tray to see every remaining player's live hand. Active seats never receive those opponent hands, and spectators cannot play, reorder, or enable autoplay. Replays still contain public plays and counts only.
+Rounds continue after each successful finisher. Finishers receive places in order and leave the turn/exchange rotation; the final active player is the last-place loser. A final draw attack or roulette resolves fully before granting a place, and a returned penalty can cancel a provisional finish. Finishers, knockouts, and players who withdraw can spectate every remaining live hand. Active seats never receive those opponent hands, and spectators cannot play, reorder, or enable autoplay. Replays still contain public plays and counts only.
 
-The table uses a wide, frame-free layout with a compact hand count, icon-only hand tools, side-toolbar instant dealing, and shared animation timing before the next player or bot action. A top-right feedback form stores nicknames and messages in a dedicated D1 table.
+Scores accumulate within the same room, including negative totals, and settle exactly once per completed round. Four-player standings award +4, +2, 0, and −1. Three players use +2, 0, −1; five use +6, +4, +2, 0, −1; six use +8, +6, +4, +2, 0, −1. Successful finishers lead the standings, then later knockouts or withdrawals, with the final active player last. From round two, the previous first-place finisher starts if still seated. Host removal revokes the old seat's HTTP and WebSocket access; removed participants stay in that round's history and leave the seating list on reset.
+
+The table uses a wide, frame-free layout with a compact hand count, icon-only hand tools, and side-toolbar instant dealing. New actions interrupt old animations and announcements; progressive draws and actual card choices still follow the game rules. A top-right feedback form stores nicknames and messages in a dedicated D1 table.
 
 Feedback is visible to the account owner at **Cloudflare Dashboard → Storage & databases → D1 → no-mercy-table-db → Studio → player_feedback**. The public game exposes submission only; it has no endpoint for listing feedback. Entries include `nickname`, `message`, UTC `created_at`, and `release`. Repeated submission ids are deduplicated; the server caps new feedback at 30 entries per minute without retaining IP addresses.
 
@@ -19,14 +21,17 @@ Private WebSocket room updates use Cloudflare Durable Objects, with server-drive
 ## Features
 
 - Multiplayer rooms with no account required, plus bots for solo testing.
-- Continuing placements until one final player remains, plus live hand spectating for finished and knocked-out seats.
+- Continuing placements until one final player remains, plus live hand spectating for finishers, knockouts, and withdrawn players.
+- Persistent room scores, previous-winner starting turns, and host removal controls with seat-access revocation.
 - Five synchronized, original avatar props with distinct animation and sound.
 - Host-controlled settings synchronized to every player before the game starts.
 - Three seven-card modes: exchange one card, swap whole hands, or choose during play. The host can allow or require an exchange.
+- An optional directional whole-table rotation after playing zero. A final zero that clears a hand retains the immediate finishing rule.
 - Two draw modes, configurable dealing speed, and an instant-deal option.
 - Flat or overlapping hands, manual card ordering, and optional automatic arrangement.
 - Animated card exchanges, cumulative draw penalties, color roulette, voice effects, and screen shake.
-- Ordered action announcements, directed draw attacks, and individual card deliveries, with per-device shake strength.
+- Interruptible action announcements, directed draw attacks, and individual card deliveries, with per-device shake strength.
+- Conflict-aware action retries that preserve intent, deduplicate accepted actions, and retain simultaneous manual hand ordering.
 - A resizable hand tray with proportionally scaled card faces and automatic spectator collapse after knockout.
 - Current-turn indicators, attributed penalty chains, and explanations for unplayable cards.
 - Post-game highlights and an optional public-event replay with seeking and playback speed controls. Drawn cards and hidden hands are excluded, and replay history is withheld until the round ends.

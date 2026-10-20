@@ -3,7 +3,7 @@ import type { Action, Card, Color, Room } from "./game";
 export type PublicCard = Pick<Card, "color" | "kind" | "number">;
 export type ReplaySeat = { id: string; count: number; out: boolean; finished?: boolean; rank?: number };
 export type ReplayFrame = {
-  id: number; at: number; kind: "opening" | "play" | "swap" | "trade" | "roulette" | "draw" | "penalty" | "knockout" | "finish" | "leave";
+  id: number; at: number; kind: "opening" | "play" | "swap" | "trade" | "rotation" | "roulette" | "draw" | "penalty" | "knockout" | "finish" | "leave";
   text: string; actor?: string; target?: string; card?: PublicCard; color: Color; direction: 1 | -1;
   counts: ReplaySeat[]; before?: ReplaySeat[]; penalty: number; amount?: number; drawn?: number;
   chain?: { player: string; value: number; color: Card["color"] }[];
@@ -63,6 +63,7 @@ export function recordRoundChange(r: Room, before: Before, actor?: string, actio
     exchange(r, append(r, { kind: "swap", actor, target, before: before.counts, amount: from, drawn: to,
       text: `${name(r, actor)} 与 ${name(r, target)} 互换整手：${from} 张 ↔ ${to} 张` }), before);
   }
+  if (action?.type === "chooseZero" && before.pending?.kind === "zero") append(r,{kind:"rotation",actor,before:before.counts,text:action.rotate ? `${name(r,actor)} 选择按${g.direction === 1 ? "顺时针" : "逆时针"}方向传牌，所有在局玩家交换整手` : `${name(r,actor)} 出 0 后选择不换牌`});
   if (action?.type === "pick" && before.pending) {
     const target = before.pending.kind === "take" ? before.pending.target : before.pending.actor;
     exchange(r, append(r, { kind: "trade", actor, target, before: before.counts, text: `${name(r, actor)} 从 ${name(r, target)} 的手牌抽走一张` }), before);
@@ -92,7 +93,8 @@ export function recordRoundChange(r: Room, before: Before, actor?: string, actio
     }
   }
   for (const p of r.players.filter(p => p.out && !before.counts.find(q => q.id === p.id)?.out)) {
-    append(r, { kind: action?.type === "leave" ? "leave" : "knockout", actor: p.id, before: before.counts, text: action?.type === "leave" ? `${p.name} 离开了本局` : `${p.name} 达到 ${p.hand.length} 张手牌，被淘汰`, amount: p.hand.length });
+    const departure = action?.type === "leave" || action?.type === "kick";
+    append(r, { kind: departure ? "leave" : "knockout", actor: p.id, before: before.counts, text: departure ? `${p.name} ${action?.type === "kick" ? "被房主移出了牌桌" : "退出本局，进入观战"}` : `${p.name} 达到 ${p.hand.length} 张手牌，被淘汰`, amount: before.counts.find(q => q.id === p.id)?.count || p.hand.length });
   }
   for (const p of r.players.filter(p => p.finished && !before.counts.find(q => q.id === p.id)?.finished)) {
     const rank = g.placements?.find(e => e.player === p.id && e.kind === "finished")?.rank;
@@ -110,7 +112,7 @@ export function publicRecap(r: Room) {
 }
 
 export function keyReplayFrames(events: ReplayFrame[]) {
-  const ids = new Set(events.filter(e => ["swap", "trade", "penalty", "knockout", "finish", "roulette"].includes(e.kind) || (e.kind === "play" && (!!e.penalty || e.card?.number === 0 || e.card?.number === 7))).map(e => e.id));
+  const ids = new Set(events.filter(e => ["swap", "trade", "rotation", "penalty", "knockout", "finish", "roulette"].includes(e.kind) || (e.kind === "play" && (!!e.penalty || e.card?.number === 0 || e.card?.number === 7))).map(e => e.id));
   for (const e of events.filter(e => e.kind === "draw")) if (e.amount && e.amount > 1) ids.add(e.id);
   events.slice(-5).forEach(e => ids.add(e.id));
   const lastPlay = events.findLast(e => e.kind === "play"); if (lastPlay) ids.add(lastPlay.id);
