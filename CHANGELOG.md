@@ -1,5 +1,14 @@
 # Changelog
 
+## v2026.10.20.8 — 2026-10-20
+
+- Add five original avatar props: tomato splats, water buckets, rubber-duck spectators, spring gloves, and rainbow confetti, with distinct flights, reactions, captions, and synthesized sounds.
+- Synchronize interactions through existing private room updates. Enforce individual and room cooldowns, wait for current card work, and resume normal gameplay after each interaction.
+- Preserve card state and match history; skip stale effects after reconnecting and respect pause, mute, and reduced-motion preferences.
+- Continue rounds after successful finishers, recording their places and excluding them from subsequent turns and exchanges. Resolve final attacks and roulette before confirming a finish; identify the last active player as the last-place loser and retain knockout records separately.
+- Automatically grant finished and knocked-out seats a read-only view of every remaining player's live hand. Collapse the hand tray on entering spectating and allow it to be reopened and resized. Keep opponent hands private from active seats and out of public replays.
+- Add placement labels, a complete final standings list, and public finish checkpoints in the match replay. Reset ranks and spectator permissions for the next round.
+
 ## v2026.10.20.7 — 2026-10-20
 
 - Match the table background to the page, remove the outer frame, widen and raise the game area, and keep instant-deal controls outside the player seating area.

@@ -85,6 +85,7 @@ test('long rounds bound replay storage while retaining highlights, and the next 
   assert.equal(g.history.events.length, REPLAY_LIMIT); assert.ok(g.history.trimmed > 0);
   assert.equal(g.history.plays, REPLAY_LIMIT + 10);
   const p = r.players.find(p => p.id === g.turn); p.hand = [card('last', g.color)]; applyAction(r, p.id, { type: 'play', card: 'last' }); drain(r);
+  const next = r.players.find(p => p.id === g.turn); next.hand = [card('next-last', g.color)]; applyAction(r, next.id, {type:'play',card:'next-last'}); drain(r);
   assert.ok(publicView(r, 'A', {}, 20).game.recap.endedAt);
   applyAction(r, 'A', { type: 'reset' }); r.players.forEach(p => p.ready = true); applyAction(r, 'A', { type: 'start' });
   assert.equal(r.game.history.plays, 0); assert.equal(r.game.history.partial, false); assert.equal(r.game.history.trimmed, 0);
@@ -102,7 +103,8 @@ test('a two-player reverse draw points the attack back at its sender', () => {
 test('rounds started before the update explicitly mark the recap as partial', () => {
   const r = fresh(); delete r.game.history;
   r.players[0].hand = [card('last', 'red')]; applyAction(r, 'A', { type: 'play', card: 'last' }); drain(r);
+  r.players[1].hand = [card('second-last','red')]; applyAction(r,'B',{type:'play',card:'second-last'}); drain(r);
   const recap = publicView(r, 'B', {}, 2).game.recap;
-  assert.equal(recap.partial, true); assert.equal(recap.plays, 1);
+  assert.equal(recap.partial, true); assert.equal(recap.plays, 2);
   assert.equal(recap.lastPlay.card.color, 'red');
 });

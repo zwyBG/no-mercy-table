@@ -7,9 +7,9 @@ type Bounds = { min: number; open: number; max: number; preferred: number };
 const initial: Bounds = { min: 54, open: 220, max: 420, preferred: 300 };
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-export function HandTray({ children, tools, eliminated, count, myTurn }: { children: ReactNode; tools?: ReactNode; eliminated: boolean; count: number; myTurn: boolean }) {
+export function HandTray({ children, tools, eliminated, watching, count, myTurn }: { children: ReactNode; tools?: ReactNode; eliminated: boolean; watching?: string; count: number; myTurn: boolean }) {
   const root = useRef<HTMLElement>(null), contentId = useId(), preference = useRef(""), lastExpanded = useRef<number | null>(null);
-  const [bounds, setBounds] = useState(initial), [desired, setDesired] = useState<number | null>(null), [collapsed, setCollapsed] = useState(eliminated), [resizing, setResizing] = useState(false);
+  const [bounds, setBounds] = useState(initial), [desired, setDesired] = useState<number | null>(null), [collapsed, setCollapsed] = useState(eliminated || !!watching), [resizing, setResizing] = useState(false);
   const drag = useRef<{ y: number; height: number; current: number } | null>(null);
   const height = collapsed ? bounds.min : clamp(desired ?? bounds.preferred, resizing ? bounds.min : bounds.open, bounds.max);
   const heightRef = useRef(height); heightRef.current = height;
@@ -34,7 +34,7 @@ export function HandTray({ children, tools, eliminated, count, myTurn }: { child
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("resize", measure); };
   }, []);
   // Keep the 25th-card reveal visible, then make room for spectating.
-  useEffect(() => { if (eliminated) { drag.current = null; setResizing(false); setCollapsed(true); } }, [eliminated]);
+  useEffect(() => { if (eliminated || watching) { drag.current = null; setResizing(false); setCollapsed(true); } }, [eliminated, watching]);
   const save = (value: number) => { if (preference.current) localStorage.setItem(preference.current, String(Math.round(value))); };
   const settle = (value: number) => {
     setResizing(false);
@@ -49,7 +49,7 @@ export function HandTray({ children, tools, eliminated, count, myTurn }: { child
   };
   return <section ref={root} className="hand-area hand-tray" data-collapsed={collapsed} data-resizing={resizing} data-compact={height < 260} data-eliminated={eliminated} style={{ "--tray-height": `${height}px` } as CSSProperties} aria-label="手牌栏">
     <div className="hand-tray-rail">
-      <div className="hand-tray-grip" role="separator" aria-label="调整手牌栏高度" aria-orientation="horizontal" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((height - bounds.min) / Math.max(1, bounds.max - bounds.min) * 100)} aria-valuetext={collapsed ? eliminated ? "已淘汰，观战中，手牌栏已收起" : `手牌 ${count} 张，已收起` : `高度 ${Math.round(height)} 像素`} aria-controls={contentId} tabIndex={0} title="上下拖动调整高度；方向键调节，Home 收起，End 展开"
+      <div className="hand-tray-grip" role="separator" aria-label="调整手牌栏高度" aria-orientation="horizontal" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((height - bounds.min) / Math.max(1, bounds.max - bounds.min) * 100)} aria-valuetext={collapsed ? watching ? `${watching}，${count} 位玩家的手牌，已收起` : eliminated ? "已淘汰，观战中，手牌栏已收起" : `手牌 ${count} 张，已收起` : `高度 ${Math.round(height)} 像素`} aria-controls={contentId} tabIndex={0} title="上下拖动调整高度；方向键调节，Home 收起，End 展开"
         onPointerDown={e => { if (e.button !== 0 || !e.isPrimary) return; e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); const h = root.current?.getBoundingClientRect().height || height; if (!collapsed) lastExpanded.current = h; drag.current = { y: e.clientY, height: h, current: h }; setDesired(h); setResizing(true); }}
         onPointerMove={e => { const current = drag.current; if (!current) return; const next = clamp(current.height + current.y - e.clientY, bounds.min, bounds.max); current.current = next; setDesired(next); setCollapsed(next <= bounds.min + 4); }}
         onPointerUp={release} onPointerCancel={release}
@@ -59,13 +59,13 @@ export function HandTray({ children, tools, eliminated, count, myTurn }: { child
           else if (e.key === "End") { e.preventDefault(); settle(bounds.max); }
           else if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); if (collapsed && e.key === "ArrowUp") toggle(); else if (e.key === "ArrowDown" && heightRef.current <= bounds.open) setCollapsed(true); else settle(heightRef.current + (e.key === "ArrowUp" ? 28 : -28)); }
         }}>
-        <i className="hand-tray-pill" /><span>{collapsed ? eliminated ? <><Eye size={13} />已淘汰 · 观战中</> : <>{myTurn ? "轮到你 · " : ""}手牌 {count} 张 · 上拉展开</> : "上下拖动，调整高度"}</span>
+        <i className="hand-tray-pill" /><span>{collapsed ? watching ? <><Eye size={13} />{watching} · 上拉看手牌</> : eliminated ? <><Eye size={13} />已淘汰 · 观战中</> : <>{myTurn ? "轮到你 · " : ""}手牌 {count} 张 · 上拉展开</> : "上下拖动，调整高度"}</span>
       </div>
-      {!collapsed && <><div className="hand-tray-tools">{!eliminated && tools}</div><h2 className="hand-tray-title">我的手牌<span>{count}</span>{eliminated && <small>已淘汰</small>}</h2></>}
+      {!collapsed && <><div className="hand-tray-tools">{!eliminated && !watching && tools}</div><h2 className="hand-tray-title">{watching ? "观战手牌" : "我的手牌"}<span>{count}{watching && "人"}</span>{eliminated && !watching && <small>已淘汰</small>}</h2></>}
       <button className="hand-tray-toggle" aria-label={collapsed ? "展开手牌栏" : "收起手牌栏"} aria-expanded={!collapsed} aria-controls={contentId} onClick={toggle}>{collapsed ? <ChevronUp size={17} /> : <ChevronDown size={17} />}<span>{collapsed ? "展开" : "收起"}</span></button>
     </div>
     <div id={contentId} className="hand-tray-content" hidden={collapsed}>
-      {eliminated ? <div className="hand-tray-spectator"><Eye size={23} /><strong>你已淘汰，继续看看朋友们怎么打。</strong><span>收起手牌栏，牌桌看得更完整。</span></div> : children}
+      {eliminated && !watching ? <div className="hand-tray-spectator"><Eye size={23} /><strong>你已淘汰，继续看看朋友们怎么打。</strong><span>收起手牌栏，牌桌看得更完整。</span></div> : children}
     </div>
   </section>;
 }

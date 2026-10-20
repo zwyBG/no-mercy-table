@@ -1,24 +1,27 @@
 import { newMatchHistory, publicRecap, recordRoundChange, roundSnapshot, type MatchHistory } from "./match-history.ts";
 import { TRANSFER_TIMING, ADVANCING_ACTIONS, DRAW_DELIVERY_DURATION, effectDuration, type EffectEvent } from "./presentation.ts";
 
+import { sendSocial, publicSocial, type SocialState } from "./social.ts";
+
 export type Color = "red" | "yellow" | "green" | "blue";
 export const COLORS: Color[] = ["red", "yellow", "green", "blue"];
 export type Card = { id: string; color: Color | "wild"; kind: string; number?: number };
 export type Config = { seats: number; initialCards: number; seven: "swap" | "trade" | "choice"; sevenMaySkip: boolean; direction: 1 | -1; firstSeat: number; drawMode: "until" | "single"; dealDelayMs: number };
 export const DEFAULT_CONFIG: Config = { seats: 3, initialCards: 7, seven: "trade", sevenMaySkip: true, direction: 1, firstSeat: -1, drawMode: "until", dealDelayMs: 300 };
-export type Player = { id: string; tokenHash: string; name: string; hand: Card[]; ready: boolean; out: boolean; uno: boolean; bot?: boolean; autoplay?: boolean };
+export type Player = { id: string; tokenHash: string; name: string; hand: Card[]; ready: boolean; out: boolean; uno: boolean; bot?: boolean; autoplay?: boolean; finished?: boolean };
 export type Pending = { kind: "target" | "take" | "return" | "roulette"; actor: string; target?: string; color?: Color; drawn?: number; sevenMode?: "swap" | "trade" };
 export type Transfer = { id: string; kind: "swap" | "take" | "return"; from: string; to: string; fromCount: number; toCount: number; startedAt: number; duration: number };
+export type Placement = { player: string; kind: "finished" | "knockout" | "last"; rank?: number; count: number; at: number };
 export type Game = { deck: Card[]; discard: Card[]; retired: Card[]; color: Color; turn: string; direction: 1 | -1; penalty: number; lastDraw: number; pending: Pending | null; risk: string[]; winner: string | null; round: number; forced: string | null;
   deal?: { dealt: number; total: number; nextAt: number; lastPlayer: string | null } | null;
   drawing?: { player: string; mode: "penalty" | "until" | "single" | "catch"; total: number; drawn: number; nextAt: number } | null;
   knockout?: { player: string; count: number; until: number; from: string | null } | null;
-  finishers?: string[]; result?: { candidate: string; revealAt: number; reason: string } | null; transfer?: Transfer | null;
+  placements?: Placement[]; loser?: string | null; finishers?: string[]; result?: { candidate: string | null; revealAt: number; reason: string } | null; transfer?: Transfer | null;
   penaltyChain?: { player: string; value: number; color: Card["color"] }[];
   history?: MatchHistory;
   delivery?: { id: string; player: string; ordinal: number; total: number; mode: string };
 };
-export type Room = { code: string; host: string; config: Config; players: Player[]; status: "lobby" | "dealing" | "playing" | "resolving" | "finished"; game: Game | null; logs: EffectEvent[]; serial: number; actions: string[]; rounds: number; botAt?: number; presentationUntil?: number; pause?: { by: string; at: number } | null };
+export type Room = { code: string; host: string; config: Config; players: Player[]; status: "lobby" | "dealing" | "playing" | "resolving" | "finished"; game: Game | null; logs: EffectEvent[]; serial: number; actions: string[]; rounds: number; botAt?: number; presentationUntil?: number; social?: SocialState; pause?: { by: string; at: number } | null };
 export type Action = { type: string; [key: string]: unknown };
 export const COLOR_NAMES: Record<string, string> = { red: "红", yellow: "黄", green: "绿", blue: "蓝", wild: "万能" };
 export const LABELS: Record<string, string> = { skip: "跳过", reverse: "反转", draw2: "+2", draw4: "+4", discard: "同色全弃", skipall: "跳过所有人", reverse4: "反转 +4", draw6: "+6", draw10: "+10", roulette: "颜色轮盘" };
@@ -72,23 +75,42 @@ export function normalizeConfig(value: unknown): Config {
 export function createRoom(code: string, p: Player, config: Config): Room {
   const r: Room = { code, host: p.id, config: normalizeConfig(config), players: [p], status: "lobby", game: null, logs: [], serial: 0, actions: [], rounds: 0 }; log(r, `${p.name} 创建了牌桌`); return r;
 }
+export const stillPlaying = (p: Player) => !p.out && !p.finished;
 export function nextPlayer(r: Room, from: string, steps = 1): string {
   let index = r.players.findIndex(p => p.id === from); assert(index >= 0, "玩家不存在");
-  for (let i = 0; i < steps; i++) do { index = (index + r.game!.direction + r.players.length) % r.players.length; } while (r.players[index].out);
+  if (!r.players.some(stillPlaying)) return from;
+  for (let i = 0; i < steps; i++) do { index = (index + r.game!.direction + r.players.length) % r.players.length; } while (!stillPlaying(r.players[index]));
   return r.players[index].id;
 }
 function player(r: Room, id: string) { const p = r.players.find(p => p.id === id); assert(p, "玩家不存在"); return p; }
-function victory(r: Room, id: string, reason = "最后一张牌已结算") {
-  const g = r.game!; g.pending = null; g.risk = []; g.result = { candidate: id, revealAt: Date.now() + 2200, reason }; r.status = "resolving";
+function awardFinish(r: Room, id: string) {
+  const g = r.game!, p = player(r, id); if (!stillPlaying(p) || p.hand.length) return;
+  p.finished = true; p.uno = false; p.autoplay = false;
+  g.placements ||= []; const rank = g.placements.filter(e => e.kind === "finished").length + 1;
+  g.placements.push({player:id,kind:"finished",rank,count:0,at:Date.now()}); g.winner ||= id;
+  g.finishers = g.finishers?.filter(other => other !== id); g.risk = g.risk.filter(other => other !== id);
+  log(r, `${p.name} 已出完手牌，第 ${rank} 名！剩余玩家继续`, "finish");
 }
-function survivors(r: Room) { const active = r.players.filter(p => !p.out); if (active.length === 1 && r.status === "playing" && !r.game!.knockout) victory(r, active[0].id, "其余玩家已达到淘汰条件"); }
+function survivors(r: Room) {
+  const g = r.game!; if (r.status !== "playing" || g.knockout || g.pending || g.drawing || g.transfer || g.penalty) return;
+  const active = r.players.filter(stillPlaying); if (active.length > 1) return;
+  const last = active[0]; g.placements ||= [];
+  g.loser = last?.id || g.placements.findLast(e => e.kind === "knockout")?.player || null;
+  if (last && !g.placements.some(e => e.player === last.id)) g.placements.push({player:last.id,kind:"last",rank:r.players.length,count:last.hand.length,at:Date.now()});
+  const reason = last ? `${last.name} 还剩 ${last.hand.length} 张牌，是本局最后一名` : "所有玩家已结束本局";
+  g.risk = []; g.result = {candidate:g.winner,revealAt:Date.now()+2200,reason}; r.status = "resolving";
+  log(r, reason);
+}
 function settleFinishers(r: Room) {
-  const g = r.game!; if (r.status !== "playing" || g.penalty || g.pending || g.drawing || g.knockout) return;
-  const candidate = (g.finishers || []).find(id => { const p = player(r, id); return !p.out && p.hand.length === 0; });
-  if (candidate) victory(r, candidate, "最后一张的效果已完成，罚抽已结清"); else survivors(r);
+  const g = r.game!; if (r.status !== "playing" || g.penalty || g.pending || g.drawing || g.knockout || g.transfer) return;
+  const ordered = [...new Set([...(g.finishers || []), ...r.players.filter(p => stillPlaying(p) && !p.hand.length).map(p => p.id)])];
+  for (const id of ordered) awardFinish(r,id);
+  if (!stillPlaying(player(r,g.turn))) g.turn = nextPlayer(r,g.turn);
+  survivors(r);
 }
 function eliminate(r: Room, p: Player) {
-  const g = r.game!; p.out = true; p.uno = false;
+  const g = r.game!; p.out = true; p.uno = false; p.autoplay = false;
+  (g.placements ||= []).push({player:p.id,kind:"knockout",count:p.hand.length,at:Date.now()});
   g.knockout = { player: p.id, count: p.hand.length, until: Date.now() + 1600, from: g.turn === p.id || g.pending?.actor === p.id || g.pending?.target === p.id ? g.pending?.actor || p.id : null };
   log(r, `${p.name} 达到 ${p.hand.length} 张手牌，被淘汰`, "out");
 }
@@ -109,7 +131,7 @@ function beginTransfer(r: Room, kind: Transfer["kind"], from: string, to: string
 function finishTurn(r: Room, from: string, steps = 1, affected = [from]) {
   if (r.status !== "playing" || r.game!.knockout) return;
   r.game!.pending = null; r.game!.forced = null; r.game!.turn = nextPlayer(r, from, steps);
-  r.game!.risk = r.players.filter(p => affected.includes(p.id) && !p.out && p.hand.length === 1 && !p.uno).map(p => p.id);
+  r.game!.risk = r.players.filter(p => affected.includes(p.id) && stillPlaying(p) && p.hand.length === 1 && !p.uno).map(p => p.id);
 }
 export function canPlay(r: Room, card: Card): boolean {
   const g = r.game; if (!g || r.pause || g.pending || g.drawing || g.knockout || g.transfer || r.status !== "playing") return false;
@@ -120,6 +142,8 @@ export function canPlay(r: Room, card: Card): boolean {
 }
 export function cardBlockReason(r: Room, id: string, card: Card): string | null {
   const g = r.game;
+  const participant = r.players.find(p => p.id === id);
+  if (participant && !stillPlaying(participant)) return "你已进入观战，可以查看剩余玩家的手牌";
   if (r.players.find(p => p.id === id)?.autoplay) return "临时托管中，接管手牌后可以操作";
   if (r.pause) return "牌局已暂停，恢复后可以出牌";
   if (!g || r.status !== "playing") return r.status === "dealing" ? "正在发牌，可以先整理手牌" : "请等待下一局开始";
@@ -140,10 +164,10 @@ export function cardBlockReason(r: Room, id: string, card: Card): string | null 
 function start(r: Room) {
   r.config = normalizeConfig(r.config);
   assert(r.players.length === r.config.seats, `还需要 ${r.config.seats - r.players.length} 位玩家加入`); assert(r.players.every(p => p.ready), "请等待所有玩家准备");
-  for (const p of r.players) { p.hand = []; p.out = false; p.uno = false; }
+  for (const p of r.players) { p.hand = []; p.out = false; p.finished = false; p.uno = false; }
   const deck = makeDeck(), [top] = deck.splice(deck.findIndex(c => c.kind === "number"), 1);
   const first = r.config.firstSeat < 0 ? shuffle(r.players)[0] : r.players[r.config.firstSeat];
-  r.game = { deck, discard: [top], retired: [], color: top.color as Color, turn: first.id, direction: r.config.direction, penalty: 0, lastDraw: 0, pending: null, risk: [], winner: null, round: ++r.rounds, forced: null, finishers: [], deal: { dealt: 0, total: r.config.initialCards * r.players.length, nextAt: Date.now() + r.config.dealDelayMs, lastPlayer: null } };
+  r.game = { deck, discard: [top], retired: [], color: top.color as Color, turn: first.id, direction: r.config.direction, penalty: 0, lastDraw: 0, pending: null, risk: [], winner: null, round: ++r.rounds, forced: null, placements: [], loser: null, finishers: [], deal: { dealt: 0, total: r.config.initialCards * r.players.length, nextAt: Date.now() + r.config.dealDelayMs, lastPlayer: null } };
   r.game.history = newMatchHistory();
   r.status = "dealing"; log(r, `第 ${r.rounds} 局开始，按座位依次发牌，每人 ${r.config.initialCards} 张`);
   if (r.config.dealDelayMs === 0) while (r.status === "dealing") advanceRoom(r, Date.now());
@@ -169,7 +193,7 @@ function advanceRoomInternal(r: Room, now: number): boolean {
   if (r.status === "dealing" && g.deal && now >= g.deal.nextAt) {
     dealNext(r, now); return true;
   }
-  if (g.transfer) { if (now < g.transfer.startedAt + g.transfer.duration) return false; g.transfer = null; return true; }
+  if (g.transfer) { if (now < g.transfer.startedAt + g.transfer.duration) return false; g.transfer = null; settleFinishers(r); return true; }
   if (g.knockout) {
     if (now < g.knockout.until) return false;
     const k = g.knockout, p = player(r, k.player); g.retired.push(...p.hand); p.hand = []; g.knockout = null;
@@ -190,7 +214,7 @@ function advanceRoomInternal(r: Room, now: number): boolean {
       settleFinishers(r);
     } return true;
   }
-  if (r.status === "resolving" && g.result && now >= g.result.revealAt) { g.winner = g.result.candidate; r.status = "finished"; log(r, `${player(r, g.winner).name} 赢得本局！`, "win"); return true; }
+  if (r.status === "resolving" && g.result && now >= g.result.revealAt) { g.winner = g.result.candidate; r.status = "finished"; log(r, g.loser ? `${player(r,g.loser).name} 成为本局最后一名，排位结束` : "本局排位结束", "end"); return true; }
   return false;
 }
 function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unknown) {
@@ -202,15 +226,15 @@ function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unkn
   p.uno = p.hand.length === 1 && uno === true; const playEvent = log(r, `${p.name} 出了${cardLabel(card)}${p.uno ? " · UNO！" : ""}`, card.kind === "number" ? card.number === 7 ? "seven" : card.number === 0 ? "zero" : "play" : card.kind);
   if (!p.hand.length) {
     if (drawValue(card) || card.kind === "roulette") { g.finishers = [...(g.finishers || []), p.id]; log(r, `${p.name} 已出完手牌，等待最后一张效果结算`); }
-    else { victory(r, p.id); return; }
+    else { awardFinish(r,p.id); finishTurn(r,p.id); survivors(r); return; }
   }
   if (card.kind === "number" && card.number === 7) { g.pending = { kind: "target", actor: p.id }; return; }
   if (card.kind === "number" && card.number === 0) {
-    const hands = new Map(r.players.filter(p => !p.out).map(p => [p.id, p.hand]));
-    for (const [id, hand] of hands) { const target = player(r, nextPlayer(r, id)); target.hand = hand; target.uno = false; } log(r, "所有手牌按出牌方向传给下一位"); affected = r.players.filter(q => !q.out).map(q => q.id);
+    const hands = new Map(r.players.filter(stillPlaying).map(p => [p.id, p.hand]));
+    for (const [id, hand] of hands) { const target = player(r, nextPlayer(r, id)); target.hand = hand; target.uno = false; } log(r, "所有手牌按出牌方向传给下一位"); affected = r.players.filter(stillPlaying).map(q => q.id);
   }
   if (card.kind === "reverse" || card.kind === "reverse4") g.direction = g.direction === 1 ? -1 : 1;
-  const active = r.players.filter(p => !p.out).length;
+  const active = r.players.filter(stillPlaying).length;
   if (drawValue(card)) { g.penaltyChain = [...(g.penaltyChain || []), { player: p.id, value: drawValue(card), color: card.color }]; g.penalty += drawValue(card); g.lastDraw = drawValue(card); finishTurn(r, p.id, card.kind === "reverse4" && active === 2 ? 2 : 1); playEvent.cue = { from: p.id, to: g.turn, fromName: p.name, toName: player(r, g.turn).name, amount: drawValue(card), total: g.penalty, chain: g.penaltyChain.map(s => s.value) }; return; }
   if (card.kind === "roulette") { const target = nextPlayer(r, p.id); g.turn = target; g.pending = { kind: "roulette", actor: target }; return; }
   finishTurn(r, p.id, card.kind === "skipall" ? active : card.kind === "skip" || (card.kind === "reverse" && active === 2) ? 2 : 1, affected);
@@ -218,6 +242,7 @@ function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unkn
 type ActionContext = { hostOffline: boolean; offlineIds?: string[]; automated?: boolean };
 export function applyAction(r: Room, id: string, a: Action, context: ActionContext = { hostOffline: false }): Room {
   assert(!ADVANCING_ACTIONS.has(a.type) || !presentationRemaining(r), "请等待当前动画播放完成");
+  if (a.type === "social") return sendSocial(r, id, a.target, a.kind);
   const before = roundSnapshot(r, id, a), result = applyActionInternal(r, id, a, context);
   recordRoundChange(r, before, id, a);
   return result;
@@ -236,12 +261,13 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
       if (g.result) g.result.revealAt += elapsed;
       if (r.botAt) r.botAt += elapsed;
       if (r.presentationUntil) r.presentationUntil += elapsed;
+      if (r.social) { r.social.events.forEach(e => { e.at += elapsed; }); for (const player of Object.keys(r.social.sent)) r.social.sent[player] += elapsed; r.social.lastAt += elapsed; }
       r.pause = null; log(r, `${p.name} 恢复了牌局`);
     } return r;
   }
   if (a.type === "autoplay") {
     const target = a.target ? player(r, String(a.target)) : p;
-    assert(g && !target.bot && !target.out && r.status !== "finished", "当前不能切换托管");
+    assert(g && !target.bot && stillPlaying(target) && r.status !== "finished", "当前不能切换托管");
     assert(target.id === id || id === r.host && context.offlineIds?.includes(target.id) && a.enabled === true, "只能为自己，或离线超过 45 秒的玩家开启托管");
     target.autoplay = a.enabled === true; log(r, `${target.name}${target.autoplay ? " 开启了临时托管" : " 已接管自己的手牌"}`); return r;
   }
@@ -272,27 +298,29 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
   if (a.type === "start") { assert(id === r.host && r.status === "lobby", "只有房主可以开始游戏"); r.pause = null; start(r); return r; }
   if (a.type === "finishDeal") {
     assert(!r.pause, "请先恢复牌局");
-    assert(!p.out && g && (r.status === "dealing" || r.status === "playing"), "现在没有正在进行的发牌");
+    assert(stillPlaying(p) && g && (r.status === "dealing" || r.status === "playing"), "现在没有正在进行的发牌");
     if (r.status === "dealing") {
       log(r, `${p.name} 选择立即发完剩余手牌`);
       while (g.deal) dealNext(r, Date.now());
     }
     return r;
   }
-  if (a.type === "reset") { assert(id === r.host && r.status === "finished", "本局尚未结束"); r.status = "lobby"; r.game = null; r.pause = null; delete r.presentationUntil; for (const q of r.players) { q.hand = []; q.out = false; q.autoplay = false; q.ready = q.id === r.host || !!q.bot; } log(r, "回到大厅，准备再来一局"); return r; }
+  if (a.type === "reset") { assert(id === r.host && r.status === "finished", "本局尚未结束"); r.status = "lobby"; r.game = null; r.pause = null; delete r.presentationUntil; for (const q of r.players) { q.hand = []; q.out = false; q.finished = false; q.autoplay = false; q.ready = q.id === r.host || !!q.bot; } log(r, "回到大厅，准备再来一局"); return r; }
   if (a.type === "leave") {
     if (r.status === "dealing") { r.status = "lobby"; r.game = null; r.players.forEach(q => { q.hand = []; q.ready = q.id === r.host || !!q.bot; }); log(r, "有人离开发牌阶段，回到大厅重新准备"); }
     if (r.status === "lobby") { r.players = r.players.filter(x => x.id !== id); if (r.host === id && r.players.length) { r.host = r.players.find(q => !q.bot)?.id || r.host; const nextHost = r.players.find(q => q.id === r.host); if (nextHost) nextHost.ready = true; } }
-    else if (r.status === "playing" && !p.out) {
+    else if (r.status === "playing" && stillPlaying(p)) {
       if (g!.transfer && (g!.transfer.from === id || g!.transfer.to === id)) g!.transfer = null;
       if (g!.drawing?.player === id) { if (g!.drawing.mode === "penalty") { g!.penalty = 0; g!.lastDraw = 0; g!.penaltyChain = []; } g!.drawing = null; }
-      p.out = true; g!.retired.push(...p.hand); p.hand = []; log(r, `${p.name} 离开了本局`); survivors(r);
+      (g!.placements ||= []).push({player:id,kind:"knockout",count:p.hand.length,at:Date.now()});
+      p.out = true; p.autoplay = false; g!.retired.push(...p.hand); p.hand = []; log(r, `${p.name} 离开了本局`);
       if (r.status === "playing" && (g!.turn === id || g!.pending?.actor === id || g!.pending?.target === id)) finishTurn(r, g!.pending?.actor || id);
-      if (r.host === id) r.host = r.players.find(x => !x.out && !x.bot)?.id || r.host;
       settleFinishers(r);
-    } return r;
+    }
+    if (r.host === id && r.status !== "lobby") r.host = r.players.find(x => x.id !== id && !x.bot && stillPlaying(x))?.id || r.players.find(x => x.id !== id && !x.bot)?.id || r.host;
+    return r;
   }
-  assert(g && (r.status === "playing" || r.status === "dealing") && !p.out, "当前不能进行这个操作");
+  assert(g && (r.status === "playing" || r.status === "dealing") && stillPlaying(p), "当前不能进行这个操作");
   if (a.type === "sort") {
     assert(Array.isArray(a.order), "顺序无效"); const ids = a.order as string[];
     assert(ids.length <= p.hand.length && new Set(ids).size === ids.length && ids.every(x => p.hand.some(c => c.id === x)), "手牌已变化，请重新整理"); p.hand = [...ids.map(x => p.hand.find(c => c.id === x)!), ...p.hand.filter(c => !ids.includes(c.id))]; return r;
@@ -302,7 +330,7 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
   assert(r.status === "playing" && !g.drawing && !g.knockout && !g.transfer, "请等待发牌、罚抽或换牌动画完成");
   if (a.type === "uno") { assert(p.hand.length === 1, "剩一张牌时可以喊 UNO"); p.uno = true; g.risk = g.risk.filter(x => x !== id); log(r, `${p.name} 喊了 UNO！`, "uno"); return r; }
   if (a.type === "catch") {
-    const target = player(r, String(a.target)); assert(!g.pending && target.id !== id && g.risk.includes(target.id) && target.hand.length === 1 && !target.uno && !target.out, "现在没有可抓的漏喊");
+    const target = player(r, String(a.target)); assert(!g.pending && target.id !== id && g.risk.includes(target.id) && target.hand.length === 1 && !target.uno && stillPlaying(target), "现在没有可抓的漏喊");
     g.risk = g.risk.filter(x => x !== target.id); log(r, `${p.name} 抓到 ${target.name} 漏喊 UNO，罚抽 2 张`); beginDraw(r, target, "catch", 2); return r;
   }
   if (g.pending) {
@@ -320,7 +348,7 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
       if (a.type === "skipSeven") { assert(pending.actor === id, "请等待出 7 的玩家选择"); assert(r.config.sevenMaySkip !== false, "本桌出 7 必须交换"); log(r, `${p.name} 选择不交换手牌`); finishTurn(r, id); return r; }
       if (a.type === "chooseSeven") { assert(r.config.seven === "choice" && pending.actor === id && (a.mode === "swap" || a.mode === "trade"), "只有出 7 的玩家可以选择换牌方式"); pending.sevenMode = a.mode; return r; }
       const mode = pending.sevenMode || r.config.seven; assert(mode === "swap" || mode === "trade", "请先选择换一张或换整手");
-      assert(a.type === "target" && pending.actor === id, "请等待出 7 的玩家选择对手"); const target = player(r, String(a.target)); assert(target.id !== id && !target.out, "请选择另一名在局玩家");
+      assert(a.type === "target" && pending.actor === id, "请等待出 7 的玩家选择对手"); const target = player(r, String(a.target)); assert(target.id !== id && stillPlaying(target), "请选择另一名在局玩家");
       if (mode === "swap") { const fromCount = p.hand.length, toCount = target.hand.length; [p.hand, target.hand] = [target.hand, p.hand]; p.uno = false; target.uno = false; log(r, `${p.name} 与 ${target.name} 交换了全部手牌`, "swap"); finishTurn(r, id, 1, [id, target.id]); beginTransfer(r, "swap", id, target.id, fromCount, toCount); }
       else g.pending = { kind: "take", actor: id, target: target.id, sevenMode: "trade" }; return r;
     }
@@ -344,21 +372,22 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
 export function publicView(r: Room, id: string, seen: Record<string, number>, version: number) {
   const g = r.game, me = r.players.find(p => p.id === id);
   const now = r.pause?.at || Date.now();
-  return { code: r.code, host: r.host, config: { ...DEFAULT_CONFIG, ...r.config }, status: r.status, version, me: id, pause: r.pause || null, animation: r.presentationUntil ? { remainingMs: presentationRemaining(r) } : null,
-    players: r.players.map(p => ({ id: p.id, name: p.name, count: p.hand.length, ready: p.ready, out: p.out, uno: p.uno, bot: !!p.bot, autoplay: !!p.autoplay, online: !!p.bot || Date.now() - (seen[p.id] || 0) < 25000, lastSeen: seen[p.id] || 0 })), hand: me?.hand || [], blockedReasons: Object.fromEntries((me?.hand || []).map(c => [c.id, cardBlockReason(r, id, c)])), logs: r.logs,
-    game: g ? { recap: publicRecap(r), delivery: g.delivery || null, top: g.discard[g.discard.length - 1], color: g.color, turn: g.turn, direction: g.direction, penalty: g.penalty, penaltyChain: g.penaltyChain || [], lastDraw: g.lastDraw, pending: g.pending, risk: g.risk, winner: g.winner, round: g.round, deckCount: g.deck.length, forced: g.forced, deal: g.deal ? { dealt: g.deal.dealt, total: g.deal.total, lastPlayer: g.deal.lastPlayer } : null, drawing: g.drawing ? { player: g.drawing.player, mode: g.drawing.mode, drawn: g.drawing.drawn, total: g.drawing.total } : null, knockout: g.knockout ? { player: g.knockout.player, count: g.knockout.count } : null, resolution: r.status === "resolving" ? g.result?.reason || "最后一张牌正在结算" : null, transfer: g.transfer ? { id: g.transfer.id, kind: g.transfer.kind, from: g.transfer.from, to: g.transfer.to, fromCount: g.transfer.fromCount, toCount: g.transfer.toCount, duration: g.transfer.duration, remainingMs: Math.max(0, g.transfer.startedAt + g.transfer.duration - now) } : null, finishers: (g.finishers || []).filter(id => !player(r, id).out && player(r, id).hand.length === 0), playable: me && !me.out && !me.autoplay && g.turn === id && !g.pending ? me.hand.filter(c => canPlay(r, c)).map(c => c.id) : [] } : null };
+  const spectating = !!me && !!g && (!!me.finished || me.out || r.status === "finished");
+  return { spectating, spectatorHands: spectating ? r.players.filter(stillPlaying).map(p => ({id:p.id,name:p.name,cards:p.hand})) : [], code: r.code, host: r.host, config: { ...DEFAULT_CONFIG, ...r.config }, status: r.status, version, me: id, social: publicSocial(r, id, now), pause: r.pause || null, animation: r.presentationUntil ? { remainingMs: presentationRemaining(r) } : null,
+    players: r.players.map(p => ({ id: p.id, name: p.name, count: p.hand.length, ready: p.ready, out: p.out, finished: !!p.finished, rank: g?.placements?.find(e => e.player === p.id && e.kind === "finished")?.rank || null, uno: p.uno, bot: !!p.bot, autoplay: !!p.autoplay, online: !!p.bot || Date.now() - (seen[p.id] || 0) < 25000, lastSeen: seen[p.id] || 0 })), hand: me?.hand || [], blockedReasons: Object.fromEntries((me?.hand || []).map(c => [c.id, cardBlockReason(r, id, c)])), logs: r.logs,
+    game: g ? { recap: publicRecap(r), delivery: g.delivery || null, top: g.discard[g.discard.length - 1], color: g.color, turn: g.turn, direction: g.direction, penalty: g.penalty, penaltyChain: g.penaltyChain || [], lastDraw: g.lastDraw, pending: g.pending, risk: g.risk, winner: g.winner, loser: g.loser || null, placements: g.placements || [], round: g.round, deckCount: g.deck.length, forced: g.forced, deal: g.deal ? { dealt: g.deal.dealt, total: g.deal.total, lastPlayer: g.deal.lastPlayer } : null, drawing: g.drawing ? { player: g.drawing.player, mode: g.drawing.mode, drawn: g.drawing.drawn, total: g.drawing.total } : null, knockout: g.knockout ? { player: g.knockout.player, count: g.knockout.count } : null, resolution: r.status === "resolving" ? g.result?.reason || "最后一张牌正在结算" : null, transfer: g.transfer ? { id: g.transfer.id, kind: g.transfer.kind, from: g.transfer.from, to: g.transfer.to, fromCount: g.transfer.fromCount, toCount: g.transfer.toCount, duration: g.transfer.duration, remainingMs: Math.max(0, g.transfer.startedAt + g.transfer.duration - now) } : null, finishers: (g.finishers || []).filter(id => !player(r, id).out && player(r, id).hand.length === 0), playable: me && stillPlaying(me) && !me.autoplay && g.turn === id && !g.pending ? me.hand.filter(c => canPlay(r, c)).map(c => c.id) : [] } : null };
 }
 
 // Bots choose using their own hand and public counts; hidden picks use positions only.
 export function botAction(r: Room): { id: string; action: Action } | null {
   const g = r.game; if (!g || r.pause || presentationRemaining(r) || r.status !== "playing" || g.drawing || g.knockout || g.transfer) return null;
   const pending = g.pending, id = pending ? pending.kind === "return" ? pending.target! : pending.actor : g.turn;
-  const p = player(r, id); if ((!p.bot && !p.autoplay) || p.out) return null;
+  const p = player(r, id); if ((!p.bot && !p.autoplay) || !stillPlaying(p)) return null;
   const favoriteColor = () => [...COLORS].sort((a, b) => p.hand.filter(c => c.color === b).length - p.hand.filter(c => c.color === a).length)[0];
   if (pending?.kind === "roulette") return { id, action: pending.color ? { type: "drawRoulette" } : { type: "color", color: shuffle(COLORS)[0] } };
   if (pending?.kind === "target") {
-    if (r.config.seven === "choice" && !pending.sevenMode) return { id, action: { type: "chooseSeven", mode: r.players.some(q => !q.out && q.id !== id && q.hand.length < p.hand.length) ? "swap" : "trade" } };
-    const others = shuffle(r.players.filter(q => !q.out && q.id !== id));
+    if (r.config.seven === "choice" && !pending.sevenMode) return { id, action: { type: "chooseSeven", mode: r.players.some(q => stillPlaying(q) && q.id !== id && q.hand.length < p.hand.length) ? "swap" : "trade" } };
+    const others = shuffle(r.players.filter(q => stillPlaying(q) && q.id !== id));
     if ((pending.sevenMode || r.config.seven) === "swap") {
       others.sort((a, b) => a.hand.length - b.hand.length);
       if (r.config.sevenMaySkip !== false && p.hand.length <= others[0].hand.length) return { id, action: { type: "skipSeven" } };

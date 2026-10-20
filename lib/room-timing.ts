@@ -14,5 +14,5 @@ export function nextRoomWake(room: Room, now = Date.now()): number | null {
   const pending = g.pending;
   const id = pending ? pending.kind === "return" ? pending.target : pending.actor : g.turn;
   const actor = room.players.find(p => p.id === id);
-  return actor && !actor.out && (actor.bot || actor.autoplay) ? Math.max(now + 1, (room.botAt || 0) + 1100) : null;
+  return actor && !actor.out && !actor.finished && (actor.bot || actor.autoplay) ? Math.max(now + 1, (room.botAt || 0) + 1100) : null;
 }

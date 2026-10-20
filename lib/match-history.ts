@@ -1,7 +1,7 @@
 import type { Action, Card, Color, Room } from "./game";
 
 export type PublicCard = Pick<Card, "color" | "kind" | "number">;
-export type ReplaySeat = { id: string; count: number; out: boolean };
+export type ReplaySeat = { id: string; count: number; out: boolean; finished?: boolean; rank?: number };
 export type ReplayFrame = {
   id: number; at: number; kind: "opening" | "play" | "swap" | "trade" | "roulette" | "draw" | "penalty" | "knockout" | "finish" | "leave";
   text: string; actor?: string; target?: string; card?: PublicCard; color: Color; direction: 1 | -1;
@@ -16,7 +16,7 @@ export type MatchHistory = {
 };
 export const REPLAY_LIMIT = 200;
 export const newMatchHistory = (partial = false): MatchHistory => ({ startedAt: Date.now(), serial: 0, plays: 0, trimmed: 0, partial, events: [] });
-const seats = (r: Room): ReplaySeat[] => r.players.map(p => ({ id: p.id, count: p.hand.length, out: p.out }));
+const seats = (r: Room): ReplaySeat[] => r.players.map(p => ({ id: p.id, count: p.hand.length, out: p.out, ...(p.finished ? {finished:true,rank:r.game?.placements?.find(e => e.player === p.id && e.kind === "finished")?.rank} : {}) }));
 const name = (r: Room, id?: string) => r.players.find(p => p.id === id)?.name || "玩家";
 const publicCard = (c: Card): PublicCard => ({ color: c.color, kind: c.kind, ...(c.number === undefined ? {} : { number: c.number }) });
 
@@ -94,8 +94,12 @@ export function recordRoundChange(r: Room, before: Before, actor?: string, actio
   for (const p of r.players.filter(p => p.out && !before.counts.find(q => q.id === p.id)?.out)) {
     append(r, { kind: action?.type === "leave" ? "leave" : "knockout", actor: p.id, before: before.counts, text: action?.type === "leave" ? `${p.name} 离开了本局` : `${p.name} 达到 ${p.hand.length} 张手牌，被淘汰`, amount: p.hand.length });
   }
+  for (const p of r.players.filter(p => p.finished && !before.counts.find(q => q.id === p.id)?.finished)) {
+    const rank = g.placements?.find(e => e.player === p.id && e.kind === "finished")?.rank;
+    append(r, {kind:"finish",actor:p.id,before:before.counts,text:`${p.name} 出完手牌，第 ${rank} 名，进入观战；剩余玩家继续`});
+  }
   if (r.status === "finished" && before.status !== "finished") {
-    h.endedAt = Date.now(); h.reason = g.result?.reason || "本局结束"; append(r, { kind: "finish", actor: g.winner || undefined, text: `${name(r, g.winner || undefined)} 获胜：${h.reason}` });
+    h.endedAt = Date.now(); h.reason = g.result?.reason || "本局结束"; append(r, { kind: "finish", actor: g.loser || undefined, text: `本局排位结束：${h.reason}` });
   }
 }
 

@@ -2,8 +2,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Volume2, VolumeX } from "lucide-react";
 import { EffectQueue, effectDuration, type AttackCue } from "@/lib/presentation";
+import type { SocialKind } from "@/lib/social";
 
 const EFFECTS: Record<string, { title: string; symbol: string; voice: string; tone: string; notes: number[] }> = {
+  finish: { title: "手牌清空！其他人继续", symbol: "SAFE!", voice: "", tone: "gold", notes: [392, 523, 659] },
+  end: { title: "本局排位结束！", symbol: "GG!", voice: "", tone: "purple", notes: [392, 330, 262] },
   begin: { title: "LET’S GO!", symbol: "GO!", voice: "", tone: "orange", notes: [131, 262, 392] },
   draw2: { title: "ADD TWO!", symbol: "+2", voice: "Add two!", tone: "blue", notes: [220, 330, 440] },
   draw4: { title: "ADD FOUR!", symbol: "+4", voice: "Add four!", tone: "orange", notes: [131, 196, 262, 392] },
@@ -89,6 +92,24 @@ export function useTableEffects(source: Source) {
     }
     return 0;
   };
+  const playSocial = (kind: SocialKind, phase: "launch" | "hit") => {
+    const audio = context.current; if (!enabled.current || paused.current || !audio || audio.state !== "running" || document.hidden) return;
+    const start = audio.currentTime, duration = phase === "launch" ? .22 : kind === "water" ? .56 : kind === "duck" ? .12 : .18;
+    const noise = audio.createBufferSource(), filter = audio.createBiquadFilter(), gain = audio.createGain();
+    const buffer = audio.createBuffer(1, Math.ceil(audio.sampleRate * duration), audio.sampleRate), samples = buffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) samples[i] = (Math.random() * 2 - 1) * (1 - i / samples.length);
+    noise.buffer = buffer; filter.type = "lowpass"; filter.frequency.setValueAtTime(phase === "launch" ? 1900 : kind === "water" ? 2600 : 650, start); filter.frequency.exponentialRampToValueAtTime(phase === "launch" ? 400 : 180, start + duration);
+    gain.gain.setValueAtTime(.0001, start); gain.gain.exponentialRampToValueAtTime(phase === "launch" ? .09 : .2, start + .02); gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
+    noise.connect(filter); filter.connect(gain); gain.connect(audio.destination); noise.start(start); noise.onended = () => { noise.disconnect(); filter.disconnect(); gain.disconnect(); };
+    if (phase === "hit") for (let i = 0; i < (["water", "party"].includes(kind) ? 4 : kind === "duck" ? 3 : 2); i++) {
+      const oscillator = audio.createOscillator(), volume = audio.createGain(), at = start + i * .085;
+      oscillator.type = kind === "duck" ? "sawtooth" : kind === "party" || kind === "glove" ? "triangle" : "sine";
+      const frequency = kind === "party" ? [523, 659, 784, 1047][i] : kind === "duck" ? [330, 420, 290][i] : kind === "glove" ? [170, 530][i] : kind === "water" ? 820 - i * 110 : i ? 490 : 130;
+      oscillator.frequency.setValueAtTime(frequency, at); if (kind === "glove") oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.8, at + .05); oscillator.frequency.exponentialRampToValueAtTime(kind === "party" ? frequency : kind === "duck" ? 180 : kind === "water" ? 210 : i ? 145 : 48, at + .19);
+      volume.gain.setValueAtTime(.001, at); volume.gain.exponentialRampToValueAtTime(kind === "duck" ? .045 : .12, at + .01); volume.gain.exponentialRampToValueAtTime(.0001, at + .24);
+      oscillator.connect(volume); volume.connect(audio.destination); oscillator.start(at); oscillator.stop(at + .25); oscillator.onended = () => { oscillator.disconnect(); volume.disconnect(); };
+    }
+  };
   const finish = () => {
     const event = queue.current.complete(); timer.current = null; clock.current.remaining = 0;
     if (event && event.id > 0) setCompleted(n => Math.max(n, event.id));
@@ -136,7 +157,7 @@ export function useTableEffects(source: Source) {
   useEffect(() => { const hide = () => { if (document.hidden) skip(); }; document.addEventListener("visibilitychange", hide); return () => document.removeEventListener("visibilitychange", hide); }, []);
   const changeShake = (value: number) => { setShake(value); localStorage.setItem("mercy-shake", String(value)); };
   const latestEffect = source?.logs.findLast(e => e.effect)?.id || 0;
-  return { visual, sound, toggle, preview, shake, changeShake, pendingCount, skip, caughtUp: completed >= latestEffect, paused: !!source?.pause };
+  return { visual, sound, toggle, preview, shake, changeShake, pendingCount, skip, playSocial, caughtUp: completed >= latestEffect, paused: !!source?.pause };
 }
 
 export function SoundSwitch({ on, toggle }: { on: boolean; toggle: () => void }) {

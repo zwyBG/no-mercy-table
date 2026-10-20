@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     if (room.actions.includes(a.actionId)) return response(publicView(room, p.id, timestamps, version));
     if (a.version !== version) return response({ error: "牌桌刚刚有变化，请重新操作", view: publicView(room, p.id, timestamps, version) }, 409);
     applyAction(room, p.id, a, { hostOffline: Date.now() - (timestamps[room.host] || 0) > 45000, offlineIds: room.players.filter(q => !q.bot && Date.now() - (timestamps[q.id] || 0) > 45000).map(q => q.id) });
-    if (a.type !== "sort" && a.type !== "uno" && a.type !== "claimHost") room.botAt = Date.now();
+    if (a.type !== "sort" && a.type !== "uno" && a.type !== "claimHost" && a.type !== "social") room.botAt = Date.now();
     room.actions.push(a.actionId); room.actions = room.actions.slice(-100);
     const saved = await database().prepare("UPDATE rooms SET state = ?, version = version + 1, updated_at = ? WHERE code = ? AND version = ?").bind(JSON.stringify(room), Date.now(), code, version).run();
     if (!saved.meta.changes) return response({ error: "牌桌刚刚有变化，请重新操作" }, 409);

@@ -89,15 +89,15 @@ test('UNO can be announced with play, caught before next turn, and sorting does 
 test('manual sort survives views; other hands, tokens, and draw pile never leak', () => {
   const r = fresh(), ids = r.players[0].hand.map(c => c.id).reverse(); applyAction(r, 'A', { type: 'sort', order: ids }); const v = publicView(r, 'A', {}, 1); assert.deepEqual(v.hand.map(c => c.id), ids); const json = JSON.stringify(v); assert.equal(json.includes('secret-'), false); assert.equal(v.players[1].hand, undefined); assert.equal(v.game.deck, undefined);
 });
-test('last card, including seven, wins after the visible resolution pause', () => {
-  const r = fresh(), seven = card('red', 7); hands(r, [seven]); applyAction(r, 'A', { type: 'play', card: seven.id }); assert.equal(r.status, 'finished'); assert.equal(r.game.winner, 'A'); assert.equal(r.game.pending, null);
+test('last ordinary card, including seven, records a place while remaining players continue', () => {
+  const r = fresh(), seven = card('red', 7); hands(r, [seven]); applyAction(r, 'A', { type: 'play', card: seven.id }); assert.equal(r.status, 'playing'); assert.equal(r.game.winner, 'A'); assert.equal(r.players[0].finished, true); assert.equal(r.game.placements[0].rank, 1); assert.equal(r.game.turn, 'B'); assert.equal(r.game.pending, null);
 });
 test('multiple complete games conserve all 168 cards through action chains, knockouts, and reshuffles', () => {
   for (let trial = 0; trial < 12; trial++) {
     const r = fresh(trial % 2 ? 'trade' : 'swap'); let steps = 0;
     while (r.status === 'playing' && steps++ < 3000) {
       const g = r.game, pending = g.pending;
-      if (pending?.kind === 'target') applyAction(r, pending.actor, { type: 'target', target: r.players.find(p => !p.out && p.id !== pending.actor).id });
+      if (pending?.kind === 'target') applyAction(r, pending.actor, { type: 'target', target: r.players.find(p => !p.out && !p.finished && p.id !== pending.actor).id });
       else if (pending?.kind === 'take' || pending?.kind === 'return') applyAction(r, pending.kind === 'take' ? pending.actor : pending.target, { type: 'pick', index: 0 });
       else if (pending?.kind === 'roulette') applyAction(r, pending.actor, pending.color ? { type: 'drawRoulette' } : { type: 'color', color: COLORS[steps % 4] });
       else { const p = r.players.find(p => p.id === g.turn), card = p.hand.find(c => canPlay(r, c)); applyAction(r, p.id, card ? { type: 'play', card: card.id, color: COLORS[steps % 4], uno: true } : { type: 'draw', uno: true }); }
@@ -187,17 +187,17 @@ test('dealing is round-robin, server-revealed one card per due tick, with no fut
   for (let i = 1; i <= 6; i++) { assert.equal(advanceRoom(r, time), true); assert.equal(r.players.reduce((n,p) => n + p.hand.length, 0), i); assert.equal(r.players[(i - 1) % 3].hand.length, Math.ceil(i / 3)); time += 300; }
   assert.equal(r.status, 'playing'); assert.ok(r.players.every(p => p.hand.length === 2));
 });
-test('a last attack card waits for response, cumulative draws, and a result pause before naming a winner', () => {
+test('a last attack card waits for the cumulative draws before recording its finisher and continuing', () => {
   const r = fresh(), four = card('red', 0, 'draw4'); hands(r, [four], [card('blue', 1), card('green', 3)]); perform(r, 'A', { type: 'play', card: four.id });
   assert.equal(r.status, 'playing'); assert.equal(r.game.penalty, 4); assert.equal(r.game.winner, null); assert.equal(r.game.turn, 'B'); assert.equal(publicView(r, 'B', {}, 1).game.playable.length, 0);
   perform(r, 'B', { type: 'draw' }); assert.equal(r.players[1].hand.length, 2); let time = Math.max(r.game.drawing.nextAt, r.presentationUntil || 0);
   for (let i=1;i<=4;i++) { advanceRoom(r, time); assert.equal(r.players[1].hand.length, 2+i); if(i<4) assert.equal(r.status, 'playing'); time += 220; }
-  assert.equal(r.status, 'resolving'); assert.equal(r.game.winner, null); assert.equal(publicView(r, 'B', {}, 1).game.winner, null); advanceRoom(r, r.game.result.revealAt); assert.equal(r.status, 'finished'); assert.equal(r.game.winner, 'A');
+  assert.equal(r.status, 'playing'); assert.equal(r.game.winner, 'A'); assert.equal(r.players[0].finished, true); assert.equal(r.game.placements[0].rank, 1); assert.equal(r.game.turn, 'C'); assert.equal(r.game.result, undefined);
 });
 test('25-card knockout stays visible before its hand is cleared and the last survivor is revealed', () => {
   const r = fresh(); hands(r, Array.from({length:24},()=>card('blue',2))); r.players[2].out = true; r.game.penalty=4; r.game.lastDraw=4;
   perform(r,'A',{type:'draw'}); advanceRoom(r,Math.max(r.game.drawing.nextAt,r.presentationUntil || 0)); assert.equal(r.players[0].out,true); assert.equal(r.players[0].hand.length,25); assert.equal(r.status,'playing'); assert.equal(r.game.winner,null); assert.equal(publicView(r,'A',{},1).game.knockout.count,25);
-  advanceRoom(r,r.game.knockout.until); assert.equal(r.players[0].hand.length,0); assert.equal(r.status,'resolving'); advanceRoom(r,r.game.result.revealAt); assert.equal(r.game.winner,'B');
+  advanceRoom(r,r.game.knockout.until); assert.equal(r.players[0].hand.length,0); assert.equal(r.status,'resolving'); advanceRoom(r,r.game.result.revealAt); assert.equal(r.game.winner,null); assert.equal(r.game.loser,'B');
 });
 test('roulette requires the next player to choose, then exactly one deliberate draw per action', () => {
   const r=fresh(), roulette=card('wild',0,'roulette'); hands(r,[roulette,card()]); r.game.deck=[card('blue',5),card('yellow',3),card('wild',0,'draw10')];

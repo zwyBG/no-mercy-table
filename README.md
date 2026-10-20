@@ -4,9 +4,13 @@ A real-time, room-code multiplayer card game for 3–6 players, deployed on Clou
 
 **Play:** https://no-mercy-table.passion-fruit.workers.dev/
 
-**Release:** v2026.10.20.7
+**Release:** v2026.10.20.8
 
-This release removes the table's outer tinted frame, widens and raises the in-game layout, centers a compact hand count beside icon-only hand tools, moves instant dealing into the side toolbar, and waits for animations before allowing the next player or bot action. A top-right feedback form stores nicknames and messages in a dedicated D1 table.
+Click another player's avatar for five original cartoon props: tomato, water bucket, rubber ducks, spring glove, and rainbow confetti. All seated players see the same attributed event, with shared animation timing and server-enforced cooldowns. Props preserve hands, turns, card logs and match replays. They support pause/resume, the existing mute setting and reduced motion. No production database migration is required.
+
+Rounds now continue after each successful finisher. Finishers receive places in order and leave the turn/exchange rotation; the final active player is the last-place loser. A final draw attack or roulette resolves fully before granting a place, and a returned penalty can cancel a provisional finish. Knockouts are listed separately. Finished and knocked-out players automatically become spectators: expand the bottom tray to see every remaining player's live hand. Active seats never receive those opponent hands, and spectators cannot play, reorder, or enable autoplay. Replays still contain public plays and counts only.
+
+The table uses a wide, frame-free layout with a compact hand count, icon-only hand tools, side-toolbar instant dealing, and shared animation timing before the next player or bot action. A top-right feedback form stores nicknames and messages in a dedicated D1 table.
 
 Feedback is visible to the account owner at **Cloudflare Dashboard → Storage & databases → D1 → no-mercy-table-db → Studio → player_feedback**. The public game exposes submission only; it has no endpoint for listing feedback. Entries include `nickname`, `message`, UTC `created_at`, and `release`. Repeated submission ids are deduplicated; the server caps new feedback at 30 entries per minute without retaining IP addresses.
 
@@ -15,6 +19,8 @@ Private WebSocket room updates use Cloudflare Durable Objects, with server-drive
 ## Features
 
 - Multiplayer rooms with no account required, plus bots for solo testing.
+- Continuing placements until one final player remains, plus live hand spectating for finished and knocked-out seats.
+- Five synchronized, original avatar props with distinct animation and sound.
 - Host-controlled settings synchronized to every player before the game starts.
 - Three seven-card modes: exchange one card, swap whole hands, or choose during play. The host can allow or require an exchange.
 - Two draw modes, configurable dealing speed, and an instant-deal option.
