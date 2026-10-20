@@ -1,0 +1,25 @@
+{
+  "voice": "Daniel",
+  "language": "en-GB",
+  "rate": 210,
+  "method": "Each complete phrase is synthesized in one pass, with the same voice. No word splicing.",
+  "clips": {
+    "announcer-add-two.wav": "Add two!",
+    "announcer-add-four.wav": "Add four!",
+    "announcer-reverse-four.wav": "Reverse! Add four!",
+    "announcer-add-six.wav": "Add six!",
+    "announcer-add-ten.wav": "Add ten!",
+    "announcer-skip.wav": "Skip!",
+    "announcer-reverse.wav": "Reverse!",
+    "announcer-skip-all.wav": "My turn again!",
+    "announcer-discard.wav": "Clear!",
+    "announcer-roulette.wav": "Color roulette!",
+    "announcer-seven.wav": "Seven!",
+    "announcer-zero.wav": "Pass it on!",
+    "announcer-uno.wav": "Uno!",
+    "announcer-win.wav": "Winner!",
+    "announcer-out.wav": "No mercy!",
+    "announcer-penalty.wav": "Take the hit!",
+    "announcer-begin.wav": "Let's go!"
+  }
+}

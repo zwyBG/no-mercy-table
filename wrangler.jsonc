@@ -1,0 +1,21 @@
+{
+  "name": "no-mercy-table",
+  "account_id": "6f91ae1e63938dcb5c643be1c7c2a997",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "no-mercy-table-db",
+      "database_id": "3333a35a-bb3a-4dec-88e3-211c43736c7d",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}
