@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, applyAction as perform, advanceRoom, arrangeHand, drawValue, botAction, makeDeck, canPlay, publicView, COLORS, DEFAULT_CONFIG } from '../lib/game.ts';
+import { createRoom, applyAction as performRaw, advanceRoom, arrangeHand, drawValue, botAction, makeDeck, canPlay, publicView, COLORS, DEFAULT_CONFIG } from '../lib/game.ts';
+function perform(r, id, action, context) {
+  if (r.presentationUntil && ['play','draw','uno','catch','chooseSeven','skipSeven','target','pick','color','drawRoulette','reset','start'].includes(action.type)) advanceRoom(r, r.presentationUntil);
+  return performRaw(r, id, action, context);
+}
 function drain(r) { let n = 0; while (n++ < 500 && advanceRoom(r, Date.now() + n * 5000)) {} if (n >= 500) throw new Error('progress did not settle'); }
 function applyAction(r, id, action, context) { const result = perform(r, id, action, context); drain(r); return result; }
 let serial = 500;
@@ -186,20 +190,20 @@ test('dealing is round-robin, server-revealed one card per due tick, with no fut
 test('a last attack card waits for response, cumulative draws, and a result pause before naming a winner', () => {
   const r = fresh(), four = card('red', 0, 'draw4'); hands(r, [four], [card('blue', 1), card('green', 3)]); perform(r, 'A', { type: 'play', card: four.id });
   assert.equal(r.status, 'playing'); assert.equal(r.game.penalty, 4); assert.equal(r.game.winner, null); assert.equal(r.game.turn, 'B'); assert.equal(publicView(r, 'B', {}, 1).game.playable.length, 0);
-  perform(r, 'B', { type: 'draw' }); assert.equal(r.players[1].hand.length, 2); let time = r.game.drawing.nextAt;
+  perform(r, 'B', { type: 'draw' }); assert.equal(r.players[1].hand.length, 2); let time = Math.max(r.game.drawing.nextAt, r.presentationUntil || 0);
   for (let i=1;i<=4;i++) { advanceRoom(r, time); assert.equal(r.players[1].hand.length, 2+i); if(i<4) assert.equal(r.status, 'playing'); time += 220; }
   assert.equal(r.status, 'resolving'); assert.equal(r.game.winner, null); assert.equal(publicView(r, 'B', {}, 1).game.winner, null); advanceRoom(r, r.game.result.revealAt); assert.equal(r.status, 'finished'); assert.equal(r.game.winner, 'A');
 });
 test('25-card knockout stays visible before its hand is cleared and the last survivor is revealed', () => {
   const r = fresh(); hands(r, Array.from({length:24},()=>card('blue',2))); r.players[2].out = true; r.game.penalty=4; r.game.lastDraw=4;
-  perform(r,'A',{type:'draw'}); advanceRoom(r,r.game.drawing.nextAt); assert.equal(r.players[0].out,true); assert.equal(r.players[0].hand.length,25); assert.equal(r.status,'playing'); assert.equal(r.game.winner,null); assert.equal(publicView(r,'A',{},1).game.knockout.count,25);
+  perform(r,'A',{type:'draw'}); advanceRoom(r,Math.max(r.game.drawing.nextAt,r.presentationUntil || 0)); assert.equal(r.players[0].out,true); assert.equal(r.players[0].hand.length,25); assert.equal(r.status,'playing'); assert.equal(r.game.winner,null); assert.equal(publicView(r,'A',{},1).game.knockout.count,25);
   advanceRoom(r,r.game.knockout.until); assert.equal(r.players[0].hand.length,0); assert.equal(r.status,'resolving'); advanceRoom(r,r.game.result.revealAt); assert.equal(r.game.winner,'B');
 });
 test('roulette requires the next player to choose, then exactly one deliberate draw per action', () => {
   const r=fresh(), roulette=card('wild',0,'roulette'); hands(r,[roulette,card()]); r.game.deck=[card('blue',5),card('yellow',3),card('wild',0,'draw10')];
   perform(r,'A',{type:'play',card:roulette.id}); assert.throws(()=>perform(r,'A',{type:'color',color:'blue'}),/下一位/); perform(r,'B',{type:'color',color:'blue'});
   assert.equal(r.players[1].hand.length,2); assert.equal(advanceRoom(r,Date.now()+10000),false);
-  perform(r,'B',{type:'drawRoulette'}); assert.equal(r.players[1].hand.length,3); assert.equal(r.game.pending.drawn,1); assert.equal(advanceRoom(r,Date.now()+10000),false);
+  perform(r,'B',{type:'drawRoulette'}); assert.equal(r.players[1].hand.length,3); assert.equal(r.game.pending.drawn,1); advanceRoom(r,Date.now()+10000); assert.equal(r.players[1].hand.length,3);
   perform(r,'B',{type:'drawRoulette'}); assert.equal(r.players[1].hand.length,4); assert.equal(r.game.pending.actor,'B');
   perform(r,'B',{type:'drawRoulette'}); assert.equal(r.players[1].hand.length,5); assert.equal(r.game.pending,null); assert.equal(r.game.turn,'C');
 });
@@ -214,7 +218,7 @@ test('a black wild draw can only be followed by an equal-or-higher black wild dr
  const v=publicView(r,r.game.turn,{},1);assert.ok(v.game.playable.every(id=>r.players.find(p=>p.id===r.game.turn).hand.find(c=>c.id===id).color==='wild'));
 });
 test('leaving during progressive drawing cancels that sequence without drawing forever for an absent player', () => {
- const r=fresh();r.game.penalty=6;r.game.lastDraw=6;perform(r,'A',{type:'draw'});perform(r,'A',{type:'leave'});assert.equal(r.game.drawing,null);assert.equal(r.game.penalty,0);assert.equal(r.game.turn,'B');assert.equal(advanceRoom(r,Date.now()+10000),false);
+ const r=fresh();r.game.penalty=6;r.game.lastDraw=6;perform(r,'A',{type:'draw'});perform(r,'A',{type:'leave'});assert.equal(r.game.drawing,null);assert.equal(r.game.penalty,0);assert.equal(r.game.turn,'B');advanceRoom(r,Date.now()+10000);assert.equal(r.game.drawing,null);
 });
 
 

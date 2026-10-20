@@ -5,6 +5,20 @@ export const TRANSFER_TIMING = {
 export type AttackCue = { from: string; to: string; fromName: string; toName: string; amount: number; total: number; chain: number[] };
 export type EffectEvent = { id: number; text: string; effect?: string; cue?: AttackCue };
 
+// Shared with the server: even muted clients keep the same turn cadence.
+// These cover the complete announcement WAVs at 0.92 playback speed.
+export function effectDuration(kind: string): number {
+  if (kind === "play") return 180;
+  if (kind === "take") return 100;
+  if (kind === "swap") return 0;
+  if (kind === "reverse4") return 1900;
+  if (kind === "skipall") return 1300;
+  if (kind === "draw10" || kind === "win") return 1550;
+  return 1200;
+}
+export const DRAW_DELIVERY_DURATION = 1100;
+export const ADVANCING_ACTIONS = new Set(["play", "draw", "uno", "catch", "chooseSeven", "skipSeven", "target", "pick", "color", "drawRoulette", "reset", "start"]);
+
 // One active event survives later updates; subsequent effects wait in log order.
 export class EffectQueue {
   scope = "";

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Volume2, VolumeX } from "lucide-react";
-import { EffectQueue, type AttackCue } from "@/lib/presentation";
+import { EffectQueue, effectDuration, type AttackCue } from "@/lib/presentation";
 
 const EFFECTS: Record<string, { title: string; symbol: string; voice: string; tone: string; notes: number[] }> = {
   begin: { title: "LET’S GO!", symbol: "GO!", voice: "", tone: "orange", notes: [131, 262, 392] },
@@ -34,7 +34,7 @@ export function useTableEffects(source: Source) {
   const buffers = useRef(new Map<string, AudioBuffer>()), loading = useRef(false), activeVoices = useRef<AudioBufferSourceNode[]>([]);
   const progress = useRef({ code: "", dealt: 0, drawn: 0 }), generation = useRef(0), blocked = useRef(false), paused = useRef(false);
   const pumpRef = useRef<() => void>(() => {});
-  enabled.current = sound; blocked.current = !!source?.game?.transfer; paused.current = !!source?.pause;
+  enabled.current = sound; blocked.current = false; paused.current = !!source?.pause;
   const stopVoices = () => { for (const voice of activeVoices.current) { try { voice.stop(); } catch {} } activeVoices.current = []; };
   const loadVoices = () => {
     const audio = context.current; if (!audio || loading.current || Object.values(VOICES).every(name => buffers.current.has(name))) return;
@@ -99,13 +99,14 @@ export function useTableEffects(source: Source) {
     if (paused.current || blocked.current || queue.current.active) return;
     const event = queue.current.next(); if (!event) { setPendingCount(0); return; }
     const kind = event.effect || "play", voiceDuration = play(kind);
-    const duration = EFFECTS[kind] ? Math.max(kind === "win" || kind === "draw10" ? 1550 : 1200, voiceDuration) : kind === "take" ? 100 : 170;
+    const duration = Math.max(effectDuration(kind), voiceDuration);
     setVisual(EFFECTS[kind] ? { id: event.id, kind, text: event.text, cue: event.cue, duration } : null);
     setPendingCount(queue.current.pending.length + 1); arm(duration);
   };
   useEffect(() => {
     if (!source) { queue.current = new EffectQueue(); if (timer.current) clearTimeout(timer.current); timer.current = null; stopVoices(); setVisual(null); setPendingCount(0); return; }
     const reset = queue.current.sync(source.code, source.logs);
+    if (document.hidden) { if (timer.current) clearTimeout(timer.current); timer.current = null; queue.current.clear(); stopVoices(); setVisual(null); setPendingCount(0); setCompleted(queue.current.last); return; }
     if (reset) { if (timer.current) clearTimeout(timer.current); timer.current = null; stopVoices(); setVisual(null); setCompleted(queue.current.last); }
     const dealt = source.game?.deal?.dealt || 0, drawn = source.game?.drawing?.drawn || 0;
     if (!paused.current && !queue.current.active && progress.current.code === source.code && (dealt > progress.current.dealt || drawn > progress.current.drawn)) play("take");
@@ -132,6 +133,7 @@ export function useTableEffects(source: Source) {
     queue.current.pending.push({ id: -Date.now(), text: "特效预览 · 累计罚抽 16 张", effect: "draw10", cue: source?.logs.findLast(e => e.effect === "draw10" && e.cue)?.cue || { from: "preview-a", to: "preview-b", fromName: "你", toName: "下一家", amount: 10, total: 16, chain: [2, 4, 10] } }); setPendingCount(queue.current.pending.length + (queue.current.active ? 1 : 0)); pumpRef.current();
   };
   const skip = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; queue.current.clear(); stopVoices(); setVisual(null); setPendingCount(0); setCompleted(queue.current.last); };
+  useEffect(() => { const hide = () => { if (document.hidden) skip(); }; document.addEventListener("visibilitychange", hide); return () => document.removeEventListener("visibilitychange", hide); }, []);
   const changeShake = (value: number) => { setShake(value); localStorage.setItem("mercy-shake", String(value)); };
   const latestEffect = source?.logs.findLast(e => e.effect)?.id || 0;
   return { visual, sound, toggle, preview, shake, changeShake, pendingCount, skip, caughtUp: completed >= latestEffect, paused: !!source?.pause };

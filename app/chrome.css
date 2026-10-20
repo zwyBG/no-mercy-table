@@ -1,0 +1,57 @@
+/* The table shares the page surface and uses the available viewport. */
+.app-shell:is([data-phase=playing],[data-phase=dealing],[data-phase=resolving],[data-phase=finished]) { width:100%; max-width:none; padding-inline:clamp(10px,2vw,28px); }
+.game-workspace { width:100%; max-width:none; margin:0; }
+.game-workspace .table-area { background:transparent; border:0; border-radius:0; box-shadow:none; }
+.game-workspace .board { width:100%; max-width:none; }
+.board-game { container-type:size; --scene-shift:clamp(16px,7cqh,60px); }
+.board-game.board-6 { --scene-shift:clamp(0px,2cqh,12px); }
+.board-game .table-seat { top:clamp(38px,calc(var(--seat-y) - var(--scene-shift)),calc(100% - 38px))!important; }
+.board-game .table-seat[data-self=true] { top:auto!important; bottom:calc(8px + var(--scene-shift)); transform:translateX(-50%); }
+.board-game.board-4 .table-seat[data-self=true] { top:calc(var(--seat-y) - var(--scene-shift))!important; bottom:auto; transform:translate(-50%,-50%); }
+.board-game .table-seat[data-pole=top] { top:8px!important; transform:translateX(-50%); }
+.board-game .board-glow { top:calc(19% - var(--scene-shift)); }
+.board-game .table-path { translate:0 calc(-1 * var(--scene-shift)); }
+.board-game .seat-avatar { width:clamp(22px,10cqh,49px); height:clamp(22px,10cqh,49px); font-size:clamp(11px,4.5cqh,18px); border-radius:clamp(7px,3cqh,16px); }
+.board-game .table-seat>strong { margin-top:clamp(4px,2cqh,10px); font-size:clamp(8px,3cqh,12px); }
+.board-game .seat-status { margin-top:3px; font-size:clamp(7px,2.5cqh,10px); }
+.board-game .seat-status { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:20px; }
+.seat-count { display:inline-flex; align-items:center; justify-content:center; min-width:26px; min-height:20px; padding:2px 6px; border:1px solid #bfcfe6; border-radius:5px; background:#dfebfa; color:#426997; font-size:11px; font-weight:650; line-height:1; font-variant-numeric:tabular-nums; }
+.seat-count[data-level=warning] { background:#fff0d5; color:#9e651b; border-color:#e8c994; }.seat-count[data-level=danger] { background:#ffe0dc; color:#ae4b40; border-color:#e9aaa1; }
+.seat-count[data-level=uno] { background:#d9efe5; color:#317559; border-color:#a7cfba; }.seat-count[data-level=out] { background:#e5e8ed; color:#7b8390; border-color:#cbd1da; }
+.board-game .seat-status>small { font-size:8px; color:#77859a; }
+.board-game .mini-hand { display:none; }
+.board-game .game-center,.board-game .dealing-center { top:calc(50% - var(--scene-shift)); }
+.board-game .game-center .turn-label,.board-game .game-center .current-color,.board-game .game-center .penalty-hint,.board-game .game-center .pending-hint,.board-game .game-center .resolution-hint,.board-game .game-center .knockout-hint { display:none; }
+.board-game .game-center,.board-game .dealing-center { --center-card-height:clamp(44px,25cqh,120px); --center-card-width:calc(var(--center-card-height) * .69); }
+.board-game .draw-pile,.board-game .discard-pile { gap:8px; }.board-game .draw-pile>span:last-child,.board-game .discard-pile>span:last-child { font-size:clamp(8px,2.5cqh,10px); }
+.board-game .game-center .playing-card,.board-game .dealing-center .playing-card { width:var(--center-card-width); height:var(--center-card-height); border-width:calc(var(--center-card-height) * .03); border-radius:calc(var(--center-card-height) * .085); }
+.board-game .game-center .card-corner,.board-game .game-center .card-bottom { font-size:calc(var(--center-card-height) * .145); line-height:1; }
+.board-game .game-center .card-oval { inset:14% 6%; display:block; }.board-game .game-center .card-oval strong { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-30deg); font-size:calc(var(--center-card-height) * .32); line-height:1; }
+.board-game .game-center .card-back strong,.board-game .dealing-center .card-back strong { top:30%; font-size:calc(var(--center-card-height) * .15); }
+.board-game .game-center .card-caption { bottom:12%; font-size:calc(var(--center-card-height) * .06); }
+.board-game .dealing-center { gap:8px; }.board-game .dealing-center strong { font-size:clamp(10px,3cqh,14px); }
+.table-toolbar-actions { display:flex; align-items:center; justify-content:flex-end; gap:16px; min-width:0; }
+.table-toolbar-actions .deal-fast-forward { width:auto; min-height:34px; margin:0; padding:7px 11px; flex:none; font-size:11px; }
+.deal-progress { display:flex; align-items:center; gap:9px; font-size:11px; color:#8390a3; white-space:nowrap; }.deal-progress progress { width:80px; height:4px; accent-color:#a8b6cc; }
+.game-workspace .seat-avatar { box-shadow:0 0 0 4px var(--bg); }
+.feedback-button { min-height:36px; white-space:nowrap; }
+.feedback-modal { width:min(480px,calc(100vw - 24px)); }
+.feedback-message-label { margin-top:20px; }
+.feedback-textarea { height:150px; min-height:110px; max-height:35dvh; padding:13px 14px; resize:vertical; line-height:1.7; }
+.feedback-meta { display:flex; justify-content:space-between; gap:14px; font-size:10px; line-height:1.6; color:#8b94a3; margin-top:8px; }
+.feedback-submit { margin-top:20px; min-height:44px; }
+.feedback-error { margin:14px 0 0; color:#ad6a5f; font-size:12px; line-height:1.7; }
+.feedback-success { text-align:center; padding-top:12px; }
+.feedback-success>span { display:grid; place-items:center; margin:0 auto 14px; width:48px; height:48px; background:#edf4ef; color:#6c957f; border-radius:50%; }
+.feedback-success h3 { font-size:19px; margin:0 0 9px; }.feedback-success p { font-size:12px; color:#8a94a3; line-height:1.8; margin-bottom:25px; }
+.animation-wait { color:#9a87ad!important; }
+@media(max-width:1000px) { .top-actions { gap:12px; }.top-actions .feedback-button>span { display:none; } }
+@media(max-width:760px) {
+  .app-shell:not([data-phase=home]):not([data-phase=lobby]) .top-actions { gap:9px; }
+  .app-shell:not([data-phase=home]):not([data-phase=lobby]) .top-actions .quiet-button>span { display:none; }
+  .game-workspace .board { max-width:none; }
+  .game-workspace .table-toolbar { padding-inline:4px; }.game-workspace .match-status-wrap { margin-inline:0; }
+  .table-toolbar-actions { gap:8px; }.deal-progress { font-size:9px; }.deal-progress progress { display:none; }
+  .app-shell[data-phase=dealing] .table-toolbar .shape-label { display:none; }
+  .feedback-meta { flex-direction:column; gap:3px; }.feedback-meta>span:last-child { align-self:flex-end; }
+}

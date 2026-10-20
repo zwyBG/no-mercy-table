@@ -4,6 +4,7 @@ import type { Room } from "./game";
 export function nextRoomWake(room: Room, now = Date.now()): number | null {
   const g = room.game;
   if (!g || room.pause) return null;
+  if (room.presentationUntil) return Math.max(now + 1, room.presentationUntil);
   if (room.status === "dealing" && g.deal) return Math.max(now + 1, g.deal.nextAt);
   if (g.transfer) return Math.max(now + 1, g.transfer.startedAt + g.transfer.duration);
   if (g.knockout) return Math.max(now + 1, g.knockout.until);

@@ -40,10 +40,11 @@ function FlyingDraw({ delivery, me, children }: { delivery: Delivery; me: string
   }, [delivery.id, me]);
   return <div className={`draw-delivery ${delivery.player === me ? "draw-delivery-own" : ""} delivery-${delivery.mode}`} style={path} aria-hidden="true"><div className="draw-delivery-card">{children}</div><div className="draw-delivery-ring" /><span className="draw-delivery-count">+1{delivery.total > 0 && <small>{delivery.ordinal} / {delivery.total}</small>}</span></div>;
 }
-export function CardDeliveries({ view, children, renderFace }: { view: View | null; children: ReactNode; renderFace: (card: Card) => ReactNode }) {
+export function CardDeliveries({ view, children, renderFace, onBusy }: { view: View | null; children: ReactNode; renderFace: (card: Card) => ReactNode; onBusy?: (busy: boolean) => void }) {
   const [flights, setFlights] = useState<(Delivery & { face?: Card })[]>([]), last = useRef({ scope: "", id: "", hand: [] as string[] });
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const delivery = view?.game?.delivery, scope = `${view?.code}:${view?.game?.round}`;
+  useEffect(() => { onBusy?.(flights.length > 0); }, [flights.length, onBusy]);
   useEffect(() => {
     const oldHand = last.current.hand; last.current.hand = view?.hand.map(c => c.id) || [];
     if (last.current.scope !== scope) { last.current = { scope, id: delivery?.id || "", hand: last.current.hand }; setFlights([]); return; }

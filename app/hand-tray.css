@@ -4,21 +4,25 @@
 .app-shell:has(.hand-tray) .game-workspace .board { flex:1 1 0; min-height:0; }
 .game-workspace .hand-area.hand-tray { display:flex; flex-direction:column; flex:0 0 var(--tray-height); height:var(--tray-height); min-height:0; padding:0 18px 12px; overflow:hidden; transition:height .28s ease,flex-basis .28s ease; border-radius:18px 18px 0 0; background:#fff; border:1px solid #dae2ee; border-bottom:0; box-shadow:0 -8px 30px #7185a014; }
 .game-workspace .hand-tray[data-resizing=true] { transition:none; user-select:none; }
-.hand-tray-rail { display:flex; align-items:center; flex:none; height:32px; gap:12px; order:-2; margin:0 -5px 6px; }
-.hand-tray-grip { flex:1; min-width:0; height:100%; position:relative; display:flex; align-items:center; cursor:ns-resize; touch-action:none; user-select:none; border-radius:8px; outline-offset:1px; }
+.hand-tray-rail { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); grid-template-rows:14px 36px; align-items:center; flex:none; height:50px; column-gap:10px; order:-2; margin:0 -5px 2px; }
+.hand-tray-grip { grid-column:1/-1; grid-row:1; min-width:0; height:100%; position:relative; display:flex; align-items:center; cursor:ns-resize; touch-action:none; user-select:none; border-radius:8px; outline-offset:1px; }
 .hand-tray-grip:hover { background:#f7f9fc; }
 .hand-tray-pill { position:absolute; left:50%; top:6px; width:38px; height:4px; margin-left:-19px; background:#cbd3e0; border-radius:4px; transition:background .15s,width .15s; }
 .hand-tray-grip:hover .hand-tray-pill,.hand-tray-grip:focus-visible .hand-tray-pill { background:#9eafc9; width:48px; margin-left:-24px; }
-.hand-tray-grip>span { display:flex; align-items:center; gap:6px; font-size:9px; color:#a0aabd; padding-top:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hand-tray-grip>span { display:none; align-items:center; gap:6px; font-size:9px; color:#a0aabd; padding-top:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .hand-tray-grip:focus-visible { outline:2px solid #b9c8de; }
-.hand-tray-toggle { display:flex; align-items:center; justify-content:center; gap:4px; flex:none; min-width:62px; min-height:30px; border-radius:7px; background:#f3f6fa; color:#788ba7; font-size:10px; }
+.hand-tray-toggle { grid-column:3; grid-row:2; justify-self:end; display:flex; align-items:center; justify-content:center; gap:4px; min-width:54px; min-height:32px; border-radius:7px; background:#f3f6fa; color:#788ba7; font-size:10px; }
 .hand-tray-toggle:hover { background:#eaf0f8; }
+.hand-tray-tools { grid-column:1; grid-row:2; justify-self:start; min-width:0; }
+.hand-tray-title { grid-column:2; grid-row:2; display:flex; align-items:center; justify-content:center; gap:7px; margin:0; color:#7a879b; font-size:11px; font-weight:500; line-height:1; white-space:nowrap; }
+.hand-tray-title>span { display:grid; place-items:center; min-width:22px; height:19px; padding:0 4px; border-radius:4px; background:#e6edf8; color:#5d6e88; font-size:11px; font-variant-numeric:tabular-nums; }.hand-tray-title small { font-size:10px; font-weight:400; color:#8d99ac; }
 .hand-tray-content { display:contents; }
 .hand-tray-content[hidden] { display:none!important; }
-.hand-tray .hand-top { display:contents; }
-.hand-tray .hand-top>div:first-child { flex:none; order:0; display:block; width:100%; margin:0 0 5px; }
-.hand-tray .hand-top p { display:none; }
-.hand-tray .hand-view-tools { flex:none; order:1; margin:0; }
+.hand-tray .hand-view-tools { display:flex; align-items:center; flex-wrap:nowrap; gap:6px; margin:0; }
+.hand-tray .hand-layout { gap:2px; padding:2px; border-radius:8px; }
+.hand-tray .hand-layout button,.hand-tray .auto-arrange { display:grid; place-items:center; flex:none; width:32px; height:32px; min-height:32px; padding:0; border-radius:6px; }
+.hand-tray .hand-view-tools button svg { width:16px; height:16px; }
+.hand-tray .auto-arrange { border-color:transparent; background:transparent; }.hand-tray .auto-arrange:hover:not(:disabled) { border-color:#dfe5ef; background:#f3f6fa; }
 .hand-tray .hand-cards { flex:1 1 0; min-height:0!important; height:auto!important; order:2; margin:0; padding:12px 4px; }
 .hand-tray .own-hand-flat { align-items:center; flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; }
 .hand-tray .own-hand-flat .hand-card { flex:none; }
@@ -43,21 +47,22 @@
 .hand-tray .hand-actions .mobile-draw-action { display:flex; flex:0 1 110px; }
 .hand-tray .hand-actions .play-button { flex:1; }
 .hand-tray .hand-hint { display:none; }
-.hand-tray[data-compact=true] .hand-view-tools,.hand-tray[data-compact=true] .selected-tools { display:none; }
+.hand-tray[data-compact=true] .selected-tools { display:none; }
 .hand-tray[data-compact=true] .card-feedback:not(.card-blocked):not(.card-ready) { min-height:16px; font-size:9px; }
-.hand-tray[data-collapsed=true] .hand-tray-rail { height:36px; margin-bottom:0; }
-.hand-tray[data-collapsed=true] .hand-tray-grip>span { color:#7889a3; font-size:11px; padding-top:6px; }
+.hand-tray[data-collapsed=true] .hand-tray-rail { height:36px; margin-bottom:0; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:36px; }
+.hand-tray[data-collapsed=true] .hand-tray-grip { grid-column:1; }.hand-tray[data-collapsed=true] .hand-tray-toggle { grid-column:2; grid-row:1; }
+.hand-tray[data-collapsed=true] .hand-tray-grip>span { display:flex; color:#7889a3; font-size:11px; padding-top:6px; }
 .hand-tray[data-collapsed=true] .hand-tray-pill { top:3px; }
 .hand-tray[data-eliminated=true][data-collapsed=true] .hand-tray-grip>span { color:#8b91a0; }
 .hand-tray-spectator { display:flex; flex:1; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center; color:#a7afbc; }
 .hand-tray-spectator strong { font-size:13px; color:#8795aa; font-weight:500; }.hand-tray-spectator span { font-size:10px; }
 @media(max-width:760px) {
   .game-workspace .hand-area.hand-tray { padding:0 12px max(9px,env(safe-area-inset-bottom)); }
-  .hand-tray-rail { gap:6px; }
-  .hand-tray-grip>span { font-size:8px; }
-  .hand-tray .hand-top>div:first-child { margin-bottom:4px; }
+  .hand-tray-rail { column-gap:4px; }
+  .hand-tray-title { gap:5px; font-size:10px; }
+  .hand-tray .hand-view-tools { gap:3px; }.hand-tray .hand-layout button,.hand-tray .auto-arrange { width:30px; height:32px; }
   .hand-tray .hand-actions .uno-button { flex-basis:60px; }.hand-tray .hand-actions .mobile-draw-action { flex-basis:90px; }
   .hand-tray .hand-actions button { font-size:11px; padding:10px 8px; }
 }
-@media(max-height:650px) { .hand-tray .hand-top>div:first-child { margin-bottom:2px; }.hand-tray .hand-actions { margin-top:2px; }.hand-tray .card-feedback { min-height:20px; } }
+@media(max-height:650px) { .hand-tray .hand-actions { margin-top:2px; }.hand-tray .card-feedback { min-height:20px; } }
 @media(prefers-reduced-motion:reduce) { .game-workspace .hand-area.hand-tray { transition:none; } }

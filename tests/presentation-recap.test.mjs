@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAction, advanceRoom, createRoom, publicView, DEFAULT_CONFIG } from '../lib/game.ts';
+import { applyAction as perform, advanceRoom, createRoom, publicView, DEFAULT_CONFIG } from '../lib/game.ts';
 import { EffectQueue, TRANSFER_TIMING } from '../lib/presentation.ts';
 import { keyReplayFrames, REPLAY_LIMIT } from '../lib/match-history.ts';
+
+function applyAction(r, id, action, context) {
+  if (r.presentationUntil && !r.pause) advanceRoom(r, r.presentationUntil);
+  return perform(r, id, action, context);
+}
 
 const person = id => ({ id, tokenHash: `secret-${id}`, name: id, hand: [], ready: true, out: false, uno: false });
 const card = (id, color, kind = 'number', number = 3) => ({ id, color, kind, number });
@@ -63,7 +68,7 @@ test('whole-hand exchanges retain before/after counts and a complete animation i
 test('draw delivery broadcasts card backs and public progress without exposing the received card', () => {
   const r = fresh(); r.players[0].hand = [card('two', 'red', 'draw2'), card('kept', 'blue')];
   applyAction(r, 'A', { type: 'play', card: 'two' }); applyAction(r, 'B', { type: 'draw' });
-  const nextCard = r.game.deck.at(-1).id; advanceRoom(r, Date.now() + 1000);
+  const nextCard = r.game.deck.at(-1).id; advanceRoom(r, Math.max(Date.now() + 1000, r.presentationUntil || 0));
   const v = publicView(r, 'C', {}, 8), delivery = v.game.delivery;
   assert.deepEqual([delivery.player, delivery.ordinal, delivery.total, delivery.mode], ['B', 1, 2, 'penalty']);
   assert.equal('card' in delivery, false); assert.equal(JSON.stringify(delivery).includes(nextCard), false);

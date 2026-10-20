@@ -1,14 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, applyAction, advanceRoom, botAction, publicView, canPlay, cardBlockReason, DEFAULT_CONFIG } from '../lib/game.ts';
+import { createRoom, applyAction as perform, advanceRoom, botAction, publicView, canPlay, cardBlockReason, DEFAULT_CONFIG } from '../lib/game.ts';
 import { nextRoomWake } from '../lib/room-timing.ts';
 import { reconcileHandOrder } from '../lib/hand-order.ts';
+
+function applyAction(r, id, action, context) {
+  if (r.presentationUntil && !r.pause) advanceRoom(r, r.presentationUntil);
+  return perform(r, id, action, context);
+}
 
 const person = id => ({ id, tokenHash: `private-${id}`, name: id, hand: [], ready: true, out: false, uno: false });
 const card = (id, color, kind, number) => ({ id, color, kind, number });
 function room() {
   const r = createRoom('ABC234', person('A'), { ...DEFAULT_CONFIG, firstSeat: 0, dealDelayMs: 0 });
   r.players.push(person('B'), person('C')); applyAction(r, 'A', { type: 'start' });
+  if (r.presentationUntil) advanceRoom(r, r.presentationUntil);
   r.game.discard = [card('top', 'red', 'number', 5)]; r.game.color = 'red';
   return r;
 }

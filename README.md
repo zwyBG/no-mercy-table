@@ -4,9 +4,13 @@ A real-time, room-code multiplayer card game for 3–6 players, deployed on Clou
 
 **Play:** https://no-mercy-table.passion-fruit.workers.dev/
 
-**Release:** v2026.10.20.6
+**Release:** v2026.10.20.7
 
-This release adds private WebSocket room updates with Cloudflare Durable Objects, server-driven dealing and bot turns, reconnect support, host pause/resume, and temporary autoplay. D1 remains the authoritative room store so existing rooms can be retained. See [CHANGELOG.md](CHANGELOG.md) for release details.
+This release removes the table's outer tinted frame, widens and raises the in-game layout, centers a compact hand count beside icon-only hand tools, moves instant dealing into the side toolbar, and waits for animations before allowing the next player or bot action. A top-right feedback form stores nicknames and messages in a dedicated D1 table.
+
+Feedback is visible to the account owner at **Cloudflare Dashboard → Storage & databases → D1 → no-mercy-table-db → Studio → player_feedback**. The public game exposes submission only; it has no endpoint for listing feedback. Entries include `nickname`, `message`, UTC `created_at`, and `release`. Repeated submission ids are deduplicated; the server caps new feedback at 30 entries per minute without retaining IP addresses.
+
+Private WebSocket room updates use Cloudflare Durable Objects, with server-driven dealing and bot turns, reconnect support, host pause/resume, and temporary autoplay. D1 remains the authoritative room store so existing rooms can be retained. See [CHANGELOG.md](CHANGELOG.md) for release details.
 
 ## Features
 
@@ -36,6 +40,8 @@ npm run dev
 
 Open the local URL printed by the development server. Local D1 data is separate from the production database.
 
+To enable feedback on a new local database, run `npx wrangler d1 execute DB --local --file drizzle/0001_player_feedback.sql`.
+
 ## Verification
 
 ```sh
@@ -48,10 +54,11 @@ GitHub Actions runs these checks for pushes to `main` and pull requests.
 
 ## Deploy to Cloudflare
 
-The included `wrangler.jsonc` targets the `no-mercy-table` Worker and its dedicated `no-mercy-table-db` D1 database, using the `DB` binding. The `ROOMS` binding and `room-hub-v1` migration provision a SQLite-backed `RoomHub` namespace on deployment. Existing D1 room records remain in place; this upgrade requires no D1 schema migration.
+The included `wrangler.jsonc` targets the `no-mercy-table` Worker and its dedicated `no-mercy-table-db` D1 database, using the `DB` binding. The `ROOMS` binding and `room-hub-v1` migration provision a SQLite-backed `RoomHub` namespace on deployment. Before upgrading from v2026.10.20.6 or earlier, apply the additive feedback-table SQL below. It preserves existing room records and can be applied more than once.
 
 ```sh
 npx wrangler login
+npx wrangler d1 execute DB --remote --file drizzle/0001_player_feedback.sql
 npm run build
 npm run deploy
 ```
@@ -62,6 +69,7 @@ Initialize a new database once:
 
 ```sh
 npm run db:apply
+npx wrangler d1 execute DB --remote --file drizzle/0001_player_feedback.sql
 ```
 
 ## Repository contents

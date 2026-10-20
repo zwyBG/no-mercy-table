@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { postRoomAction } from '../lib/room-request.ts';
 import { readApiResponse, requestErrorMessage } from '../lib/api-response.ts';
-import { createRoom, applyAction, DEFAULT_CONFIG } from '../lib/game.ts';
+import { createRoom, applyAction, advanceRoom, DEFAULT_CONFIG } from '../lib/game.ts';
 
 test('a response lost after a committed draw retries the same action id without drawing twice', async () => {
   const person = id => ({ id, tokenHash: id, name: id, hand: [], ready: true, out: false, uno: false });
   const room = createRoom('ABC234', person('A'), { ...DEFAULT_CONFIG, dealDelayMs: 0, firstSeat: 0 });
-  room.players.push(person('B'), person('C')); applyAction(room, 'A', { type: 'start' });
+  room.players.push(person('B'), person('C')); applyAction(room, 'A', { type: 'start' }); advanceRoom(room, room.presentationUntil);
   const sent = [], signals = []; let retryNotices = 0, applied = 0;
   const request = async (_url, options) => {
     sent.push(options.body); signals.push(options.signal);

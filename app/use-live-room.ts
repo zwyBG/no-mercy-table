@@ -28,7 +28,7 @@ export function useLiveRoom(session: { code: string; token: string } | null, onV
         if (!response.ok) throw new Error();
         callbacks.current.onView(data); setConnection("limited");
         const g = data.game, pending = g?.pending, actor = pending ? pending.kind === "return" ? pending.target : pending.actor : g?.turn;
-        const timed = !data.pause && (data.status === "dealing" || data.status === "resolving" || g?.drawing || g?.transfer || g?.knockout || data.players.some(p => p.id === actor && (p.bot || p.autoplay)));
+        const timed = !data.pause && (data.animation || data.status === "dealing" || data.status === "resolving" || g?.drawing || g?.transfer || g?.knockout || data.players.some(p => p.id === actor && (p.bot || p.autoplay)));
         if (timed && !document.hidden) {
           await fetch("/api/room", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` }, body: JSON.stringify({ type: "tick", code: session.code }), signal: AbortSignal.timeout(7000) });
           delay = 600;

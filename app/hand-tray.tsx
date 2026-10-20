@@ -7,7 +7,7 @@ type Bounds = { min: number; open: number; max: number; preferred: number };
 const initial: Bounds = { min: 54, open: 220, max: 420, preferred: 300 };
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-export function HandTray({ children, eliminated, count, myTurn }: { children: ReactNode; eliminated: boolean; count: number; myTurn: boolean }) {
+export function HandTray({ children, tools, eliminated, count, myTurn }: { children: ReactNode; tools?: ReactNode; eliminated: boolean; count: number; myTurn: boolean }) {
   const root = useRef<HTMLElement>(null), contentId = useId(), preference = useRef(""), lastExpanded = useRef<number | null>(null);
   const [bounds, setBounds] = useState(initial), [desired, setDesired] = useState<number | null>(null), [collapsed, setCollapsed] = useState(eliminated), [resizing, setResizing] = useState(false);
   const drag = useRef<{ y: number; height: number; current: number } | null>(null);
@@ -61,6 +61,7 @@ export function HandTray({ children, eliminated, count, myTurn }: { children: Re
         }}>
         <i className="hand-tray-pill" /><span>{collapsed ? eliminated ? <><Eye size={13} />已淘汰 · 观战中</> : <>{myTurn ? "轮到你 · " : ""}手牌 {count} 张 · 上拉展开</> : "上下拖动，调整高度"}</span>
       </div>
+      {!collapsed && <><div className="hand-tray-tools">{!eliminated && tools}</div><h2 className="hand-tray-title">我的手牌<span>{count}</span>{eliminated && <small>已淘汰</small>}</h2></>}
       <button className="hand-tray-toggle" aria-label={collapsed ? "展开手牌栏" : "收起手牌栏"} aria-expanded={!collapsed} aria-controls={contentId} onClick={toggle}>{collapsed ? <ChevronUp size={17} /> : <ChevronDown size={17} />}<span>{collapsed ? "展开" : "收起"}</span></button>
     </div>
     <div id={contentId} className="hand-tray-content" hidden={collapsed}>
