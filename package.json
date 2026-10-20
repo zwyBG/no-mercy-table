@@ -1,6 +1,6 @@
 {
   "name": "no-mercy-table",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -10,7 +10,7 @@
     "build": "vinext build",
     "deploy": "wrangler deploy --config dist/server/wrangler.json",
     "db:apply": "wrangler d1 execute DB --remote --file drizzle/0000_oval_micromax.sql",
-    "test": "node --test tests/game.test.mjs tests/api-response.test.mjs",
+    "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

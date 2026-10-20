@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Volume2, VolumeX } from "lucide-react";
+import { EffectQueue, type AttackCue } from "@/lib/presentation";
 
 const EFFECTS: Record<string, { title: string; symbol: string; voice: string; tone: string; notes: number[] }> = {
   begin: { title: "LET’S GO!", symbol: "GO!", voice: "", tone: "orange", notes: [131, 262, 392] },
@@ -22,38 +23,43 @@ const EFFECTS: Record<string, { title: string; symbol: string; voice: string; to
   penalty: { title: "TAKE THE HIT!", symbol: "+", voice: "", tone: "orange", notes: [180, 120] },
 };
 const VOICES: Record<string, string> = { draw2: "announcer-add-two", draw4: "announcer-add-four", reverse4: "announcer-reverse-four", draw6: "announcer-add-six", draw10: "announcer-add-ten", skip: "announcer-skip", reverse: "announcer-reverse", skipall: "announcer-skip-all", discard: "announcer-discard", roulette: "announcer-roulette", seven: "announcer-seven", zero: "announcer-zero", uno: "announcer-uno", win: "announcer-win", out: "announcer-out", penalty: "announcer-penalty", begin: "announcer-begin" };
-type Event = { id: number; text: string; effect?: string };
-type Source = { code: string; version: number; logs: Event[]; game?: { deal?: { dealt: number } | null; drawing?: { drawn: number } | null } | null } | null;
-type Visual = { id: number; kind: string } | null;
+type Source = { code: string; version: number; logs: import("@/lib/presentation").EffectEvent[]; pause?: unknown; game?: { round?: number; transfer?: unknown; deal?: { dealt: number } | null; drawing?: { drawn: number } | null } | null } | null;
+export type Visual = { id: number; kind: string; text: string; cue?: AttackCue; duration: number } | null;
 
 export function useTableEffects(source: Source) {
-  const [sound, setSound] = useState(true), [visual, setVisual] = useState<Visual>(null);
-  const context = useRef<AudioContext | null>(null), enabled = useRef(true), baseline = useRef<{ code: string; last: number } | null>(null), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const buffers = useRef(new Map<string, AudioBuffer>()), loading = useRef(false), activeVoices = useRef<AudioBufferSourceNode[]>([]), progress = useRef({ code: "", dealt: 0, drawn: 0 }), generation = useRef(0);
-  enabled.current = sound;
+  const [sound, setSound] = useState(true), [shake, setShake] = useState(1), [visual, setVisual] = useState<Visual>(null);
+  const [pendingCount, setPendingCount] = useState(0), [completed, setCompleted] = useState(0);
+  const context = useRef<AudioContext | null>(null), enabled = useRef(true), queue = useRef(new EffectQueue());
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null), clock = useRef({ started: 0, remaining: 0 });
+  const buffers = useRef(new Map<string, AudioBuffer>()), loading = useRef(false), activeVoices = useRef<AudioBufferSourceNode[]>([]);
+  const progress = useRef({ code: "", dealt: 0, drawn: 0 }), generation = useRef(0), blocked = useRef(false), paused = useRef(false);
+  const pumpRef = useRef<() => void>(() => {});
+  enabled.current = sound; blocked.current = !!source?.game?.transfer; paused.current = !!source?.pause;
+  const stopVoices = () => { for (const voice of activeVoices.current) { try { voice.stop(); } catch {} } activeVoices.current = []; };
   const loadVoices = () => {
     const audio = context.current; if (!audio || loading.current || Object.values(VOICES).every(name => buffers.current.has(name))) return;
     loading.current = true;
     void Promise.allSettled([...new Set(Object.values(VOICES))].filter(name => !buffers.current.has(name)).map(async name => {
       const response = await fetch(`/audio/${name}.wav`); if (!response.ok) return;
-      const buffer = await audio.decodeAudioData(await response.arrayBuffer()); buffers.current.set(name, buffer);
+      buffers.current.set(name, await audio.decodeAudioData(await response.arrayBuffer()));
     })).finally(() => { loading.current = false; });
   };
   const unlock = () => {
-    if (!enabled.current) return;
+    if (!enabled.current || paused.current) return;
     try {
       const Constructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (Constructor) { if (!context.current || context.current.state === "closed") context.current = new Constructor(); if (context.current.state === "suspended") void context.current.resume().catch(() => {}); }
       loadVoices();
-    } catch { /* Visual effects remain available when audio is unavailable. */ }
+    } catch { /* Visuals remain available without Web Audio. */ }
   };
   useEffect(() => {
     setSound(localStorage.getItem("mercy-sound") !== "off");
+    const saved = Number(localStorage.getItem("mercy-shake") ?? "1"); setShake([0, .45, 1, 1.5].includes(saved) ? saved : 1);
     const onGesture = () => unlock(); document.addEventListener("pointerdown", onGesture); document.addEventListener("keydown", onGesture);
-    return () => { document.removeEventListener("pointerdown", onGesture); document.removeEventListener("keydown", onGesture); if (timer.current) clearTimeout(timer.current); void context.current?.close().catch(() => {}); };
+    return () => { document.removeEventListener("pointerdown", onGesture); document.removeEventListener("keydown", onGesture); if (timer.current) clearTimeout(timer.current); stopVoices(); void context.current?.close().catch(() => {}); };
   }, []);
   const play = (kind: string) => {
-    if (!enabled.current) return;
+    if (!enabled.current) return 0;
     const effect = EFFECTS[kind]; const audio = context.current;
     if (audio && audio.state === "running") {
       const notes = effect?.notes || (kind === "take" ? [440, 660] : [700]);
@@ -72,7 +78,6 @@ export function useTableEffects(source: Source) {
       }
       const buffer = buffers.current.get(VOICES[kind]);
       if (buffer) {
-        for (const old of activeVoices.current) { try { old.stop(); } catch {} } activeVoices.current = [];
         const voice = audio.createBufferSource(), gain = audio.createGain(), compressor = audio.createDynamicsCompressor();
         voice.buffer = buffer; voice.playbackRate.value = .92;
         gain.gain.value = .9; compressor.threshold.value = -18; compressor.ratio.value = 5;
@@ -80,40 +85,80 @@ export function useTableEffects(source: Source) {
         const echo = audio.createDelay(.5), echoGain = audio.createGain(); echo.delayTime.value = .105; echoGain.gain.value = .11; compressor.connect(echo); echo.connect(echoGain); echoGain.connect(gain);
         activeVoices.current.push(voice); voice.start(audio.currentTime + .035); voice.onended = () => { voice.disconnect(); gain.disconnect(); compressor.disconnect(); echo.disconnect(); echoGain.disconnect(); activeVoices.current = activeVoices.current.filter(v => v !== voice); };
       }
+      return buffer ? buffer.duration / .92 * 1000 + 150 : 0;
     }
+    return 0;
+  };
+  const finish = () => {
+    const event = queue.current.complete(); timer.current = null; clock.current.remaining = 0;
+    if (event && event.id > 0) setCompleted(n => Math.max(n, event.id));
+    setVisual(null); setPendingCount(queue.current.pending.length); pumpRef.current();
+  };
+  const arm = (duration: number) => { clock.current = { started: Date.now(), remaining: duration }; timer.current = setTimeout(finish, duration); };
+  pumpRef.current = () => {
+    if (paused.current || blocked.current || queue.current.active) return;
+    const event = queue.current.next(); if (!event) { setPendingCount(0); return; }
+    const kind = event.effect || "play", voiceDuration = play(kind);
+    const duration = EFFECTS[kind] ? Math.max(kind === "win" || kind === "draw10" ? 1550 : 1200, voiceDuration) : kind === "take" ? 100 : 170;
+    setVisual(EFFECTS[kind] ? { id: event.id, kind, text: event.text, cue: event.cue, duration } : null);
+    setPendingCount(queue.current.pending.length + 1); arm(duration);
   };
   useEffect(() => {
-    if (!source) { baseline.current = null; return; }
+    if (!source) { queue.current = new EffectQueue(); if (timer.current) clearTimeout(timer.current); timer.current = null; stopVoices(); setVisual(null); setPendingCount(0); return; }
+    const reset = queue.current.sync(source.code, source.logs);
+    if (reset) { if (timer.current) clearTimeout(timer.current); timer.current = null; stopVoices(); setVisual(null); setCompleted(queue.current.last); }
     const dealt = source.game?.deal?.dealt || 0, drawn = source.game?.drawing?.drawn || 0;
-    if (progress.current.code === source.code && (dealt > progress.current.dealt || drawn > progress.current.drawn)) play("take");
+    if (!paused.current && !queue.current.active && progress.current.code === source.code && (dealt > progress.current.dealt || drawn > progress.current.drawn)) play("take");
     progress.current = { code: source.code, dealt, drawn };
-    const last = source.logs.at(-1)?.id || 0;
-    if (!baseline.current || baseline.current.code !== source.code) { baseline.current = { code: source.code, last }; return; }
-    const recent = source.logs.filter(event => event.id > baseline.current!.last && event.effect);
-    baseline.current.last = last;
-    const event = recent.find(e => e.effect === "win") || [...recent].reverse().find(e => EFFECTS[e.effect!]) || recent.at(-1);
-    if (!event) return;
-    play(event.effect!);
-    if (EFFECTS[event.effect!]) {
-      if (timer.current) clearTimeout(timer.current); setVisual({ id: event.id, kind: event.effect! });
-      timer.current = setTimeout(() => setVisual(null), event.effect === "draw10" || event.effect === "win" ? 1550 : 1200);
-    }
+    setPendingCount(queue.current.pending.length + (queue.current.active ? 1 : 0)); pumpRef.current();
   }, [source?.code, source?.version]);
+  useEffect(() => {
+    if (paused.current) {
+      if (timer.current) { clearTimeout(timer.current); timer.current = null; clock.current.remaining = Math.max(1, clock.current.remaining - (Date.now() - clock.current.started)); }
+      if (context.current?.state === "running") void context.current.suspend().catch(() => {});
+    } else {
+      if (context.current?.state === "suspended" && enabled.current) void context.current.resume().catch(() => {});
+      if (queue.current.active && !timer.current) arm(clock.current.remaining || 1); else pumpRef.current();
+    }
+  }, [!!source?.pause]);
   const toggle = () => {
     const next = !enabled.current; enabled.current = next; setSound(next); localStorage.setItem("mercy-sound", next ? "on" : "off");
-    if (next) { unlock(); play("take"); } else { generation.current++; for (const voice of activeVoices.current) { try { voice.stop(); } catch {} } activeVoices.current = []; }
+    if (next) { unlock(); play("take"); } else { generation.current++; stopVoices(); }
   };
-  const preview = async () => { unlock(); const gen = generation.current;
+  const preview = async () => {
+    unlock(); const gen = generation.current;
     if (context.current && !buffers.current.has("announcer-add-ten") && enabled.current) { try { const res = await fetch("/audio/announcer-add-ten.wav"); if (res.ok) buffers.current.set("announcer-add-ten", await context.current.decodeAudioData(await res.arrayBuffer())); } catch {} }
-    if (gen !== generation.current) return; play("draw10"); setVisual({ id: Date.now(), kind: "draw10" }); if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setVisual(null), 1550); };
-  return { visual, sound, toggle, preview };
+    if (gen !== generation.current) return;
+    queue.current.pending.push({ id: -Date.now(), text: "特效预览 · 累计罚抽 16 张", effect: "draw10", cue: source?.logs.findLast(e => e.effect === "draw10" && e.cue)?.cue || { from: "preview-a", to: "preview-b", fromName: "你", toName: "下一家", amount: 10, total: 16, chain: [2, 4, 10] } }); setPendingCount(queue.current.pending.length + (queue.current.active ? 1 : 0)); pumpRef.current();
+  };
+  const skip = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; queue.current.clear(); stopVoices(); setVisual(null); setPendingCount(0); setCompleted(queue.current.last); };
+  const changeShake = (value: number) => { setShake(value); localStorage.setItem("mercy-shake", String(value)); };
+  const latestEffect = source?.logs.findLast(e => e.effect)?.id || 0;
+  return { visual, sound, toggle, preview, shake, changeShake, pendingCount, skip, caughtUp: completed >= latestEffect, paused: !!source?.pause };
 }
 
 export function SoundSwitch({ on, toggle }: { on: boolean; toggle: () => void }) {
   return <button className="quiet-button sound-switch" onClick={toggle} aria-pressed={on} aria-label={on ? "关闭音效" : "开启音效"}>{on ? <Volume2 size={16} /> : <VolumeX size={16} />}<span>{on ? "音效开" : "音效关"}</span></button>;
 }
-export function ActionEffect({ visual }: { visual: Visual }) {
+function AttackFlight({ cue }: { cue: AttackCue }) {
+  const [path, setPath] = useState<CSSProperties>({});
+  useLayoutEffect(() => {
+    const point = (id: string, fallback: number) => {
+      const r = document.querySelector<HTMLElement>(`[data-player-id="${id}"] .seat-avatar`)?.getBoundingClientRect();
+      return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: innerWidth * fallback, y: innerHeight * .35 };
+    };
+    const from = point(cue.from, .25), to = point(cue.to, .75);
+    setPath({ "--attack-x": `${from.x}px`, "--attack-y": `${from.y}px`, "--hit-x": `${to.x}px`, "--hit-y": `${to.y}px`, "--arc-x": `${(from.x + to.x) / 2}px`, "--arc-y": `${Math.min(from.y, to.y) - 80}px` } as CSSProperties);
+  }, [cue]);
+  return <div className={`attack-flight-layer ${cue.total >= 16 ? "attack-overload" : ""}`} style={path}><div className="attack-projectile"><i /><strong>+{cue.amount}</strong></div><div className="attack-impact"><i /><i /><b>+{cue.total}</b></div></div>;
+}
+export function ActionEffect({ visual, paused = false, me }: { visual: Visual; paused?: boolean; me?: string }) {
   if (!visual) return null;
   const effect = EFFECTS[visual.kind]; if (!effect) return null;
-  return <div key={visual.id} className={`fx-stage fx-${effect.tone} fx-kind-${visual.kind}`} aria-hidden="true"><div className="fx-flash" /><div className="fx-speed-lines" /><div className="fx-shockwave" /><div className="fx-screen-word">{effect.title}</div><div className="action-fx"><div className="fx-ring" /><div className="fx-ring second-ring" /><div className="fx-burst">{Array.from({ length: 24 }, (_, i) => <i key={i} style={{ "--angle": `${i * 360 / 24}deg`, "--distance": `${150 + i % 4 * 38}px`, "--delay": `${i % 4 * 13}ms` } as React.CSSProperties} />)}</div><div className="fx-stamp"><strong>{effect.symbol}</strong><span>{effect.title}</span></div></div></div>;
+  return <div key={visual.id} data-effect-id={visual.id} data-paused={paused} className={`fx-stage fx-${effect.tone} fx-kind-${visual.kind} ${visual.cue ? "fx-attack" : ""}`} style={{ "--fx-duration": `${visual.duration}ms` } as CSSProperties} aria-hidden="true">
+    <div className="fx-flash" /><div className="fx-speed-lines" /><div className="fx-shockwave" /><div className="fx-screen-word">{effect.title}</div>
+    {visual.cue && <AttackFlight cue={visual.cue} />}
+    <div className="action-fx"><div className="fx-ring" /><div className="fx-ring second-ring" /><div className="fx-burst">{Array.from({ length: 24 }, (_, i) => <i key={i} style={{ "--angle": `${i * 360 / 24}deg`, "--distance": `${150 + i % 4 * 38}px`, "--delay": `${i % 4 * 13}ms` } as CSSProperties} />)}</div><div className="fx-stamp"><strong>{effect.symbol}</strong><span>{effect.title}</span></div></div>
+    {visual.cue ? <div className="attack-story"><div><span>{visual.cue.fromName}</span><b>➜</b><span>{visual.cue.toName}</span></div><strong>{visual.cue.from === visual.cue.to ? visual.cue.to === me ? "反转回自己！" : "反转回出牌者！" : visual.cue.to === me ? "这波冲你来的！" : "加牌已送达！"}</strong><p>{visual.cue.chain.map((n, i) => <span key={i}>{i > 0 && <i> → </i>}+{n}</span>)}<b> = {visual.cue.total} 张</b></p></div> : <div className="effect-caption">{visual.text}</div>}
+  </div>;
 }

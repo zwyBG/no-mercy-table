@@ -16,8 +16,15 @@ async function read(code: string) {
   if (!row) return null; return { room: JSON.parse(row.state) as Room, version: row.version };
 }
 async function seen(code: string) {
+  if (env.ROOMS) {
+    const result = await env.ROOMS.getByName(code).fetch(`https://room.internal/presence?code=${code}`);
+    if (result.ok) return await result.json() as Record<string, number>;
+  }
   const { results } = await database().prepare("SELECT player, seen FROM presence WHERE room = ?").bind(code).all<{ player: string; seen: number }>();
   return Object.fromEntries(results.map(row => [row.player, row.seen]));
+}
+async function publish(code: string) {
+  if (env.ROOMS) await env.ROOMS.getByName(code).fetch(`https://room.internal/refresh?code=${code}`, { method: "POST" });
 }
 async function touch(code: string, player: string) { await database().prepare("INSERT INTO presence (room, player, seen) VALUES (?, ?, ?) ON CONFLICT(room, player) DO UPDATE SET seen = excluded.seen").bind(code, player, Date.now()).run(); }
 async function authorized(request: Request, room: Room) {
@@ -55,7 +62,7 @@ export async function POST(request: Request) {
       const { token, p } = await newPlayer(a.name, false); room.players.push(p); log(room, `${p.name} 加入了牌桌`);
       const saved = await database().prepare("UPDATE rooms SET state = ?, version = version + 1, updated_at = ? WHERE code = ? AND version = ?").bind(JSON.stringify(room), Date.now(), code, version).run();
       if (!saved.meta.changes) return response({ error: "有人同时加入了房间，请再点一次加入" }, 409);
-      await touch(code, p.id); return response({ token, view: publicView(room, p.id, await seen(code), version + 1) });
+      await touch(code, p.id); await publish(code); return response({ token, view: publicView(room, p.id, await seen(code), version + 1) });
     }
     const p = await authorized(request, room); if (!p) return response({ error: "座位凭证已失效，请重新加入" }, 401);
     if (a.type === "heartbeat") { await touch(code, p.id); return response({ ok: true }); }
@@ -63,19 +70,19 @@ export async function POST(request: Request) {
     if (a.type === "tick") {
       const progressed = advanceRoom(room), step = progressed ? null : botAction(room);
       if (!progressed && (!step || Date.now() - (room.botAt || 0) < 1100)) return response(publicView(room, p.id, timestamps, version));
-      if (step) applyAction(room, step.id, step.action); room.botAt = Date.now();
+      if (step) applyAction(room, step.id, step.action, { hostOffline: false, automated: true }); room.botAt = Date.now();
       const saved = await database().prepare("UPDATE rooms SET state = ?, version = version + 1, updated_at = ? WHERE code = ? AND version = ?").bind(JSON.stringify(room), Date.now(), code, version).run();
       if (!saved.meta.changes) return response({ ok: true });
-      return response(publicView(room, p.id, timestamps, version + 1));
+      await publish(code); return response(publicView(room, p.id, timestamps, version + 1));
     }
     if (typeof a.actionId !== "string" || a.actionId.length > 100) return response({ error: "操作凭证无效" }, 400);
     if (room.actions.includes(a.actionId)) return response(publicView(room, p.id, timestamps, version));
     if (a.version !== version) return response({ error: "牌桌刚刚有变化，请重新操作", view: publicView(room, p.id, timestamps, version) }, 409);
-    applyAction(room, p.id, a, { hostOffline: Date.now() - (timestamps[room.host] || 0) > 45000 });
+    applyAction(room, p.id, a, { hostOffline: Date.now() - (timestamps[room.host] || 0) > 45000, offlineIds: room.players.filter(q => !q.bot && Date.now() - (timestamps[q.id] || 0) > 45000).map(q => q.id) });
     if (a.type !== "sort" && a.type !== "uno" && a.type !== "claimHost") room.botAt = Date.now();
     room.actions.push(a.actionId); room.actions = room.actions.slice(-100);
     const saved = await database().prepare("UPDATE rooms SET state = ?, version = version + 1, updated_at = ? WHERE code = ? AND version = ?").bind(JSON.stringify(room), Date.now(), code, version).run();
     if (!saved.meta.changes) return response({ error: "牌桌刚刚有变化，请重新操作" }, 409);
-    return response(publicView(room, p.id, timestamps, version + 1));
+    await publish(code); return response(publicView(room, p.id, timestamps, version + 1));
   } catch (e) { return response({ error: e instanceof Error ? e.message : "操作失败，请重试" }, 400); }
 }

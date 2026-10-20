@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./gray.css";
+import "./play.css";
+import "./cinema.css";
+import "./hand-tray.css";
 
 export const metadata: Metadata = {
   title: "毫不留情 · 朋友牌桌",

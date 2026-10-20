@@ -1,0 +1,33 @@
+"use client";
+
+import { Bot, ChevronRight, MoreHorizontal, Pause, Play, RefreshCw, Wifi } from "lucide-react";
+import { COLOR_NAMES, type publicView } from "@/lib/game";
+import type { Connection } from "./use-live-room";
+
+type View = ReturnType<typeof publicView>;
+export function MatchStatus({ view, connection, busy, turnText, onAction, onReconnect }: { view: View; connection: Connection; busy: boolean; turnText: string; onAction: (action: Record<string, unknown>) => unknown; onReconnect: () => void }) {
+  const g = view.game, me = view.players.find(p => p.id === view.me), host = view.host === view.me;
+  const connected = connection === "live" || connection === "limited";
+  const current = view.players.find(p => p.id === g?.turn), ownTurn = view.status === "playing" && g?.turn === view.me && !g.pending && !g.drawing && !g.transfer && !g.knockout && !view.pause && !me?.autoplay;
+  const offline = view.players.filter(p => !p.bot && !p.out && !p.online && p.id !== view.me);
+  const lastPlay = [...view.logs].reverse().find(e => e.text.includes(" 出了"));
+  return <div className="match-status-wrap">
+    {!connected && <div className="reconnect-banner" role="status"><Wifi size={16} /><span><strong>{connection === "offline" ? "网络已断开" : "正在重连牌桌"}</strong> · 你的座位和手牌已保留</span><button onClick={onReconnect} aria-label="立即重连"><RefreshCw size={14} />重试</button></div>}
+    <div className={`match-status ${ownTurn ? "match-your-turn" : ""} ${view.pause ? "match-paused" : ""}`}>
+      <div className="match-turn" role="status" aria-live="polite"><span className="turn-indicator" /><div><small>{view.pause ? "TABLE PAUSED" : me?.autoplay ? "AUTO PLAY" : ownTurn ? "YOUR TURN" : "ON THE TABLE"}</small><strong>{view.pause ? "牌局已暂停" : me?.autoplay ? "临时托管中" : turnText || "本局结算中"}</strong></div></div>
+      <div className="match-controls">
+        {host && view.status !== "finished" && <button className="match-control" disabled={busy || !connected} onClick={() => onAction({ type: "pause", paused: !view.pause })} aria-label={view.pause ? "恢复牌局" : "暂停牌局"}>{view.pause ? <Play size={15} /> : <Pause size={15} />}<span>{view.pause ? "继续" : "暂停"}</span></button>}
+        <details className="match-menu"><summary aria-label="牌局管理"><MoreHorizontal size={19} /></summary><div className="match-menu-panel">
+          {!me?.out && view.status !== "finished" && <button disabled={busy || !connected} onClick={() => onAction({ type: "autoplay", enabled: !me?.autoplay })}><Bot size={16} />{me?.autoplay ? "接管自己的手牌" : "暂时离开，开启托管"}</button>}
+          {!host && view.players.some(p => p.id === view.host && !p.online && Date.now() - p.lastSeen > 45000) && <button disabled={busy} onClick={() => onAction({ type: "claimHost" })}>接管离线房主</button>}
+          <p>断线保留座位。托管只为你代打，可随时接管。</p>
+          {offline.map(p => <div className="offline-seat" key={p.id}><span>{p.name} · 等待重连</span>{host && !p.autoplay && Date.now() - p.lastSeen > 45000 && <button disabled={busy} onClick={() => onAction({ type: "autoplay", target: p.id, enabled: true })}>启用托管</button>}</div>)}
+        </div></details>
+      </div>
+      <div className="match-context"><span className={`match-color match-color-${g?.color}`}><i />{COLOR_NAMES[g?.color || "red"]}色</span><span>{g?.direction === -1 ? "↺ 逆时针" : "↻ 顺时针"}</span><span className={`live-status live-${connection}`}><i />{connection === "live" ? "实时连接" : connection === "limited" ? "兼容连接" : "重连中"}</span></div>
+    </div>
+    {!!g?.penalty && <div className="pressure-track" aria-label="罚抽叠加过程"><div className="pressure-chain">{g.penaltyChain.map((step, index) => <span className="pressure-step" key={index}>{index > 0 && <ChevronRight size={12} />}<span title={`${view.players.find(p => p.id === step.player)?.name} 出的 +${step.value}`} className={`chain-card chain-${step.color}`}>+{step.value}</span></span>)}</div><div className="pressure-total"><small>累计罚抽</small><strong>+{g.penalty}</strong></div><span className="pressure-target">{g.drawing ? "正在逐张抽取" : `${current?.id === view.me ? "由你" : current?.name || "下一位"}接牌`}</span></div>}
+    <div className="last-action">{view.pause ? "房主恢复后，发牌与动画从暂停处继续" : lastPlay?.text || "每一张牌，都可能改变局势。"}{offline.length > 0 && <span>{offline.length} 人等待重连 · 座位保留</span>}</div>
+    {me?.autoplay && <button className="take-control" disabled={busy || !connected} onClick={() => onAction({ type: "autoplay", enabled: false })}><Bot size={15} />正在为你代打 · 点击接管手牌</button>}
+  </div>;
+}
