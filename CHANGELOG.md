@@ -1,5 +1,11 @@
 # Changelog
 
+## v2026.10.20.6 — 2026-10-20
+
+- Recover from a lost or timed-out response to an authenticated seat action by retrying once with the identical action id. The existing server deduplication prevents an accepted action from running twice; room creation and joining are never automatically replayed.
+- Resynchronize the room after a connection failure, preserve the seat and hand, and display a clear message when the result of an action could not be confirmed.
+- Preserve download timeout errors so interrupted JSON responses can use the same recovery path, while keeping rule validation errors unchanged.
+
 ## v2026.10.20.5 — 2026-10-20
 
 - Replace frequent table polling with authenticated WebSocket updates and server alarms for timed game work. Retain HTTP fallback and reconnect seats after backgrounding or network loss.

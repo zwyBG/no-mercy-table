@@ -5,7 +5,8 @@ import { ArrowDown, ArrowUp, ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Chec
 import { DEFAULT_CONFIG, COLORS, COLOR_NAMES, LABELS, cardLabel, publicView, arrangeHand, type Card, type Config, type Color } from "@/lib/game";
 
 import { ActionEffect, SoundSwitch, useTableEffects } from "./effects";
-import { readApiResponse } from "@/lib/api-response";
+import { isConnectionError, readApiResponse, requestErrorMessage } from "@/lib/api-response";
+import { postRoomAction } from "@/lib/room-request";
 import { HiddenHand } from "./hidden-hand";
 import { OwnHand } from "./own-hand";
 import { HandTray } from "./hand-tray";
@@ -19,7 +20,7 @@ import { reconcileHandOrder } from "@/lib/hand-order";
 type View = ReturnType<typeof publicView>;
 type ApiData = View & { view: View; token?: string; error?: string };
 type Session = { code: string; token: string };
-const RELEASE = "2026.10.20.5";
+const RELEASE = "2026.10.20.6";
 const SHAPES = ["三角形", "正方形", "正五边形", "正六边形"];
 function Modal({ children, close, label, wide = false }: { children: ReactNode; close?: () => void; label: string; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -87,7 +88,8 @@ export default function Table() {
       const payload = { code: s?.code, version: v?.version, actionId: crypto.randomUUID(), ...action };
       let data: ApiData = {} as ApiData;
       for (let attempt = 0; attempt < 2; attempt++) {
-        const res = await fetch("/api/room", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json", ...(s ? { Authorization: `Bearer ${s.token}` } : {}) }, body: JSON.stringify(payload), signal: AbortSignal.timeout(12000) }); data = await readApiResponse<ApiData>(res);
+        const result = await postRoomAction<ApiData>(payload, s?.token, () => { setNotice("连接较慢，正在确认操作结果并重新同步…"); live.reconnect(); });
+        const res = result.response; data = result.data;
         if (res.status === 409 && attempt === 0 && s) {
           const latest = data.view || await readApiResponse<View>(await fetch(`/api/room?code=${s.code}`, { headers: { Authorization: `Bearer ${s.token}`, Accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(8000) }));
           if (latest.code) { accept(latest); payload.version = latest.version; continue; }
@@ -99,7 +101,7 @@ export default function Table() {
         const next = { code: data.view.code, token: data.token }; localStorage.setItem(`mercy-seat-${next.code}`, next.token); localStorage.setItem("mercy-last-room", next.code); localStorage.setItem("mercy-name", data.view.players.find(p => p.id === data.view.me)?.name || name.trim()); sessionRef.current = next; setSession(next); accept(data.view); setJoinOpen(false); window.history.replaceState(null, "", `?room=${next.code}`);
       } else accept(data);
       return true;
-    } catch (e) { setError(e instanceof Error ? e.message : "网络暂时不可用，请重试"); return false; }
+    } catch (e) { if (isConnectionError(e) && sessionRef.current) live.reconnect(); setError(requestErrorMessage(e, !!sessionRef.current)); return false; }
     finally { busyRef.current = false; setBusy(false); }
   };
   const updateConfig = async (patch: Partial<Config>) => {

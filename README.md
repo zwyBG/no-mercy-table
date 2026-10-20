@@ -4,7 +4,7 @@ A real-time, room-code multiplayer card game for 3–6 players, deployed on Clou
 
 **Play:** https://no-mercy-table.passion-fruit.workers.dev/
 
-**Release:** v2026.10.20.5
+**Release:** v2026.10.20.6
 
 This release adds private WebSocket room updates with Cloudflare Durable Objects, server-driven dealing and bot turns, reconnect support, host pause/resume, and temporary autoplay. D1 remains the authoritative room store so existing rooms can be retained. See [CHANGELOG.md](CHANGELOG.md) for release details.
 
