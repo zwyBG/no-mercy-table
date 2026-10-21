@@ -1,5 +1,11 @@
 # Changelog
 
+## v2026.10.21.4 — 2026-10-21
+
+- Allow authorized maintenance to configure or cancel a single-use target for the next color roulette before it is played. Keep the current roulette independent, retain the preset across rounds, and consume it only when an eligible roulette actually draws its first card. Preserve normal early knockout at 25 cards.
+- Return pending maintenance settings only with password-authorized command acknowledgements, never with public socket broadcasts, room reads or replay. Add current/future controls and private saved-state readback.
+- Cover future targets, cancellation, pause and round persistence, interrupted roulette, manual overrides, early knockout, privacy, and idempotent retries.
+
 ## v2026.10.21.3 — 2026-10-21
 
 - Display server round-trip latency beside the top-left brand throughout the lobby and game. Probe the existing room WebSocket every 10 seconds in the foreground and every 60 seconds in the background, preserving the runtime's hibernation-safe auto-response. Reject overlapping and stale measurements.

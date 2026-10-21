@@ -27,11 +27,12 @@ import { ServerLatency } from "./server-latency";
 import { matchingCards } from "@/lib/card-play";
 import { DeveloperPanel } from "./developer-panel";
 import { PrivateEntryTaps } from "@/lib/developer-access";
+import type { DeveloperSettings } from "@/lib/developer-tools";
 
 type View = ReturnType<typeof publicView>;
-type ApiData = View & { view: View; token?: string; error?: string; retryable?: boolean };
+type ApiData = View & { view: View; token?: string; error?: string; retryable?: boolean; developer?: DeveloperSettings };
 type Session = { code: string; token: string };
-const RELEASE = "2026.10.21.3";
+const RELEASE = "2026.10.21.4";
 const SHAPES = ["三角形", "正方形", "正五边形", "正六边形"];
 function Modal({ children, close, label, wide = false }: { children: ReactNode; close?: () => void; label: string; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -65,7 +66,8 @@ export default function Table() {
   const [handOrder, setHandOrder] = useState<string[]>([]), [handLayout, setHandLayout] = useState<"flat" | "overlap">("flat");
   const [batchCount, setBatchCount] = useState(1);
   const [developerOpen,setDeveloperOpen] = useState(false), privateTaps = useRef(new PrivateEntryTaps());
-  useEffect(()=>{setDeveloperOpen(false);privateTaps.current=new PrivateEntryTaps();},[view?.code]);
+  const [privateSettings,setPrivateSettings] = useState<DeveloperSettings|null>(null);
+  useEffect(()=>{setDeveloperOpen(false);setPrivateSettings(null);privateTaps.current=new PrivateEntryTaps();},[view?.code]);
   useEffect(() => setBatchCount(1),[selected,view?.code,view?.game?.round]);
   const [transferSnapshot, setTransferSnapshot] = useState<{ id: string; cards: Card[]; offset: number; known: boolean } | null>(null);
   const boardRef = useRef<HTMLDivElement>(null), viewReceivedAt = useRef(Date.now());
@@ -124,6 +126,7 @@ export default function Table() {
         if (!res.ok) { if (data.view) accept(data.view); throw new Error(data.error || "操作失败"); }
         break;
       }
+      if (data.developer && String(action.type).startsWith("dev")) setPrivateSettings(data.developer);
       if (data.token) {
         const next = { code: data.view.code, token: data.token }; localStorage.setItem(`mercy-seat-${next.code}`, next.token); localStorage.setItem("mercy-last-room", next.code); localStorage.setItem("mercy-name", data.view.players.find(p => p.id === data.view.me)?.name || name.trim()); sessionRef.current = next; setSession(next); accept(data.view); setJoinOpen(false); window.history.replaceState(null, "", `?room=${next.code}`);
       } else accept(data);
@@ -280,6 +283,6 @@ export default function Table() {
     {view?.status === "finished" && <Modal label="本局战报" wide><MatchRecap view={view} busy={busy} onReset={() => act({ type: "reset" })} onLeave={() => leave()} renderCard={c => <PlayingCard card={c} />} />{!host && view.players.some(p => p.id === view.host && !p.bot && !p.online && Date.now() - p.lastSeen > 45000) && <button className="outline-button full" disabled={busy} onClick={() => act({ type: "claimHost" })}>房主已离线，接管房间</button>}</Modal>}
     {leaveOpen && <Modal label={playing && !view?.spectating ? "退出本局？" : "离开这张牌桌？"} close={() => setLeaveOpen(false)}><p className="modal-copy">{playing && !view?.spectating ? "退出后停止参与本局，可留下观战，查看所有剩余手牌；也可以返回首页。" : view?.spectating ? "你已在观战，返回首页后可使用同一邀请链接重新进入。" : "你可以在下一局开始前重新加入。"}</p>{playing && !view?.spectating && <button className="primary-button full" disabled={busy} onClick={() => leave(true)}><Eye size={16} />退出本局并观战</button>}<button className="outline-button full" disabled={busy} onClick={() => leave()}><LogOut size={16} />离开牌桌，返回首页</button></Modal>}
     {kickTarget && view && <Modal label="移出这位玩家？" close={() => setKickTarget(null)}><p className="modal-copy">将 {view.players.find(p => p.id === kickTarget)?.name} 移出牌桌，对方会断开连接，不能再使用原座位凭证进入。{lobby ? "空座位可以邀请朋友加入。" : "本局其余玩家继续，下一局前可补充座位。"}</p><button className="primary-button full" disabled={busy} onClick={async () => { if(await act({type:"kick",target:kickTarget})) setKickTarget(null); }}>确认移出</button></Modal>}
-    {developerOpen && view && <DeveloperPanel key={view.code} view={view} busy={busy || !online} error={error} send={act} close={()=>setDeveloperOpen(false)} renderCard={c=><PlayingCard card={c} small/>}/>}
+    {developerOpen && view && <DeveloperPanel key={view.code} view={view} busy={busy || !online} error={error} settings={privateSettings} send={act} close={()=>{setDeveloperOpen(false);setPrivateSettings(null);}} renderCard={c=><PlayingCard card={c} small/>}/>}
   </div>;
 }

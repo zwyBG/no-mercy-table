@@ -128,7 +128,7 @@ export class RoomHub extends DurableObject<Cloudflare.Env> {
       // continue on the room queue, without delaying the player's response.
       this.latestVersion=Math.max(this.latestVersion,result.row.version);
       if(result.committed)this.notify(result.row);
-      return commandResult(result,id,seen);
+      return commandResult(result,id,seen,developerAuthorized);
     } catch(error) {return {status:400,body:{error:error instanceof Error?error.message:"操作失败，请重试"}};}
   }
   private notify(row:Row) {

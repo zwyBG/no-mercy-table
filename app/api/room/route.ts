@@ -3,6 +3,7 @@ import { advanceRoom, applyAction, botAction, createRoom, log, publicView, DEFAU
 import { commitRoomAction } from "@/lib/room-commit";
 import { validRoomCommand } from "@/lib/room-command";
 import { DEVELOPER_ACTIONS, verifyDeveloperPassword } from "@/lib/developer-access";
+import { developerSettings } from "@/lib/developer-tools";
 
 export const dynamic = "force-dynamic";
 const response = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store, private", "X-Content-Type-Options": "nosniff" } });
@@ -97,6 +98,6 @@ export async function POST(request: Request) {
     const view=publicView(committed.row.room,p.id,timestamps,committed.row.version);
     if(committed.conflict) return response({error:committed.conflict==="changed"?"回合或手牌已更新，请按当前牌面操作":"正在同步本次操作，请稍后重试",retryable:committed.conflict==="busy",view},409);
     if(committed.committed) await publish(code);
-    return response(view);
+    return response(developerAuthorized ? {...view,developer:developerSettings(committed.row.room)} : view);
   } catch (e) { return response({ error: e instanceof Error ? e.message : "操作失败，请重试" }, 400); }
 }

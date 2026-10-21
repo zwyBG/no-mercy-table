@@ -28,8 +28,9 @@ export type Game = { deck: Card[]; discard: Card[]; retired: Card[]; color: Colo
   delivery?: { id: string; player: string; ordinal: number; total: number; mode: string };
   jump?: JumpWindow | null;
   rouletteControl?: {actor:string;color:Color;hitAt:number;top:string};
+  rouletteKey?: string;
 };
-export type Room = { code: string; host: string; config: Config; players: Player[]; status: "lobby" | "dealing" | "playing" | "resolving" | "finished"; game: Game | null; logs: EffectEvent[]; serial: number; actions: string[]; rounds: number; scores?: Record<string,number>; lastScoredRound?: number; nextStarter?: string | null; botAt?: number; presentationUntil?: number; social?: SocialState; pause?: { by: string; at: number } | null };
+export type Room = { code: string; host: string; config: Config; players: Player[]; status: "lobby" | "dealing" | "playing" | "resolving" | "finished"; game: Game | null; logs: EffectEvent[]; serial: number; actions: string[]; rounds: number; scores?: Record<string,number>; lastScoredRound?: number; nextStarter?: string | null; botAt?: number; presentationUntil?: number; social?: SocialState; pause?: { by: string; at: number } | null; nextRouletteControl?: {hitAt:number;except?:string} };
 export type Action = { type: string; [key: string]: unknown };
 export const COLOR_NAMES: Record<string, string> = { red: "红", yellow: "黄", green: "绿", blue: "蓝", wild: "万能" };
 export const LABELS: Record<string, string> = { skip: "跳过", reverse: "反转", draw2: "+2", draw4: "+4", discard: "同色全弃", skipall: "跳过所有人", reverse4: "反转 +4", draw6: "+6", draw10: "+10", roulette: "颜色轮盘" };
@@ -142,6 +143,7 @@ function finishTurn(r: Room, from: string, steps = 1, affected = [from]) {
   if (r.status !== "playing" || r.game!.knockout) return;
   r.game!.pending = null; r.game!.forced = null; r.game!.turn = nextPlayer(r, from, steps);
   delete r.game!.rouletteControl;
+  delete r.game!.rouletteKey;
   r.game!.risk = r.players.filter(p => affected.includes(p.id) && stillPlaying(p) && p.hand.length === 1 && !p.uno).map(p => p.id);
 }
 function withdrawSeat(r: Room, p: Player, kicked = false) {
@@ -271,6 +273,7 @@ function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unkn
   const g = r.game!;
   if (card.color === "wild" && card.kind !== "roulette") assert(COLORS.includes(color as Color), "请选择接下来的颜色");
   delete g.rouletteControl;
+  delete g.rouletteKey;
   // A batch is equivalent to playing once and self-jumping the remaining
   // copies. The final copy replaces earlier buffs instead of multiplying them.
   if (cards.length > 1) { g.penalty = 0; g.lastDraw = 0; g.penaltyChain = []; }
@@ -292,7 +295,7 @@ function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unkn
   if (card.kind === "skipall") g.jump.blocked = r.players.filter(q => stillPlaying(q) && q.id !== p.id).map(q => q.id);
   else if (card.kind === "skip" || card.kind === "reverse" && active === 2) g.jump.blocked = [nextPlayer(r, p.id)];
   if (drawValue(card)) { g.penaltyChain = [...(g.penaltyChain || []), { player: p.id, value: drawValue(card), color: card.color }]; g.penalty += drawValue(card); g.lastDraw = drawValue(card); finishTurn(r, p.id, card.kind === "reverse4" && active === 2 ? 2 : 1); playEvent.cue = { from: p.id, to: g.turn, fromName: p.name, toName: player(r, g.turn).name, amount: drawValue(card), total: g.penalty, chain: g.penaltyChain.map(s => s.value) }; return; }
-  if (card.kind === "roulette") { const target = nextPlayer(r, p.id); g.turn = target; g.pending = { kind: "roulette", actor: target }; return; }
+  if (card.kind === "roulette") { const target = nextPlayer(r, p.id); g.turn = target; g.rouletteKey = crypto.randomUUID(); g.pending = { kind: "roulette", actor: target }; return; }
   finishTurn(r, p.id, card.kind === "skipall" ? active : card.kind === "skip" || (card.kind === "reverse" && active === 2) ? 2 : 1);
 }
 type ActionContext = { hostOffline: boolean; offlineIds?: string[]; automated?: boolean; developerAuthorized?: boolean };
@@ -424,6 +427,12 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
       if (a.type === "color") { assert(!pending.color && COLORS.includes(a.color as Color), "请选择轮盘颜色"); g.risk = []; pending.color = a.color as Color; pending.drawn = 0; g.color = pending.color; log(r, `${p.name} 选择${COLOR_NAMES[pending.color]}色，请逐张点击牌堆抽牌`); return r; }
       assert(a.type === "drawRoulette" && pending.color, "请先选择颜色，再逐张抽牌");
       g.jump = null;
+      g.rouletteKey ||= crypto.randomUUID();
+      const next = r.nextRouletteControl;
+      if (!(pending.drawn || 0) && next && next.except !== g.rouletteKey) {
+        g.rouletteControl ||= {actor:pending.actor,color:pending.color,hitAt:next.hitAt,top:g.discard.at(-1)!.id};
+        delete r.nextRouletteControl;
+      }
       const control = g.rouletteControl;
       const controlled = control && control.actor === pending.actor && control.color === pending.color && control.top === g.discard.at(-1)?.id;
       const hit = !!control && (pending.drawn || 0) + 1 >= control.hitAt;

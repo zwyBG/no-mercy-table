@@ -3,6 +3,8 @@ import type { Action, Card, Color, Room } from "./game.ts";
 export const COLORED_KINDS = ["number", "skip", "reverse", "draw2", "draw4", "discard", "skipall"];
 export const WILD_KINDS = ["reverse4", "roulette", "draw6", "draw10"];
 export const cardFaceKey = (c: Pick<Card, "color" | "kind" | "number">) => `${c.color}:${c.kind}:${c.kind === "number" ? c.number : ""}`;
+export type DeveloperSettings = {nextRouletteHitAt:number|null};
+export const developerSettings = (room:Room):DeveloperSettings => ({nextRouletteHitAt:room.nextRouletteControl?.hitAt ?? null});
 function requireValue(ok: unknown, message: string): asserts ok { if (!ok) throw new Error(message); }
 function validFace(value: unknown): Omit<Card, "id"> {
   const c = value as Partial<Card> | null;
@@ -16,6 +18,13 @@ export function applyDeveloperAction(room: Room, id: string, action: Action, aut
   const p = room.players.find(p => p.id === id && !p.removed && !p.bot);
   requireValue(p, "座位凭证已失效");
   if (action.type === "devUnlock") return room;
+  if (action.type === "devRoulette" && action.scope === "next") {
+    if (action.hitAt === null) { delete room.nextRouletteControl; return room; }
+    requireValue(Number.isInteger(action.hitAt) && (action.hitAt as number) >= 1 && (action.hitAt as number) <= 25, "下一次轮盘的张数应为 1～25 的整数");
+    const except = room.game?.pending?.kind === "roulette" ? room.game.rouletteKey ||= crypto.randomUUID() : undefined;
+    room.nextRouletteControl = {hitAt:action.hitAt as number,...(except ? {except} : {})};
+    return room;
+  }
   if (action.type === "devScore") {
     const target = room.players.find(p => p.id === action.target);
     requireValue(target, "玩家已离开牌桌");
@@ -38,6 +47,7 @@ export function applyDeveloperAction(room: Room, id: string, action: Action, aut
     return room;
   }
   requireValue(action.type === "devRoulette", "操作无效");
+  requireValue(action.scope === undefined || action.scope === "current", "请选择当前轮盘或下一次轮盘");
   const pending = g.pending;
   requireValue(pending?.kind === "roulette" && pending.color && !g.knockout, "当前没有已选好颜色的轮盘");
   requireValue(action.actor === pending.actor && action.color === pending.color && action.drawn === (pending.drawn || 0) && action.top === g.discard.at(-1)?.id, "轮盘进度已变化，请重新确认");
