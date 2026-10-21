@@ -1,5 +1,10 @@
 # Changelog
 
+## v2026.10.21.2 — 2026-10-21
+
+- Reject late room views and expired-seat messages from a previous connection after leaving or switching seats. Prevent a buffered socket broadcast from reopening the spectator screen after returning home.
+- Include all v2026.10.21.1 latency and jump-in features in the production release.
+
 ## v2026.10.21.1 — 2026-10-21
 
 - Add exact-face jump-in for other players and consecutive self-plays, with private matching-card hints, highlighted hands, and explicit jump controls, including pending zero/seven/roulette dialogs. Preserve ordinary penalty stacking as a separate action.

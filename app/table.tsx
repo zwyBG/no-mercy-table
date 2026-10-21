@@ -22,11 +22,12 @@ import { reconcileHandOrder } from "@/lib/hand-order";
 import { scoreForPlace } from "@/lib/room-scores";
 import { HandSync } from "@/lib/hand-sync";
 import { JumpInPrompt } from "./jump-in-prompt";
+import { canAcceptRoomView } from "@/lib/room-view";
 
 type View = ReturnType<typeof publicView>;
 type ApiData = View & { view: View; token?: string; error?: string; retryable?: boolean };
 type Session = { code: string; token: string };
-const RELEASE = "2026.10.21.1";
+const RELEASE = "2026.10.21.2";
 const SHAPES = ["三角形", "正方形", "正五边形", "正六边形"];
 function Modal({ children, close, label, wide = false }: { children: ReactNode; close?: () => void; label: string; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -66,7 +67,7 @@ export default function Table() {
   useEffect(()=>{sortSync.current?.reset();},[view?.code,view?.game?.round,view?.me]);
   useEffect(()=>()=>sortSync.current?.reset(),[]);
   viewRef.current = view; sessionRef.current = session;
-  const accept = (next: View) => { if (!viewRef.current || next.code !== viewRef.current.code || next.version >= viewRef.current.version) { const transfer = next.game?.transfer; if (transfer && transfer.id !== viewRef.current?.game?.transfer?.id && (transfer.from === next.me || transfer.to === next.me)) setTransferSnapshot({ id: transfer.id, cards: viewRef.current?.code === next.code ? [...viewRef.current.hand] : [], offset: transfer.duration - transfer.remainingMs, known: viewRef.current?.code === next.code }); viewReceivedAt.current = Date.now(); viewRef.current = next; setView(next); setConfig(next.config); } };
+  const accept = (next: View, sourceToken?: string) => { if (canAcceptRoomView(viewRef.current,next,sessionRef.current,sourceToken)) { const transfer = next.game?.transfer; if (transfer && transfer.id !== viewRef.current?.game?.transfer?.id && (transfer.from === next.me || transfer.to === next.me)) setTransferSnapshot({ id: transfer.id, cards: viewRef.current?.code === next.code ? [...viewRef.current.hand] : [], offset: transfer.duration - transfer.remainingMs, known: viewRef.current?.code === next.code }); viewReceivedAt.current = Date.now(); viewRef.current = next; setView(next); setConfig(next.config); } };
   useEffect(() => {
     setHydrated(true);
     setHandLayout(localStorage.getItem("mercy-hand-layout") === "overlap" ? "overlap" : "flat");
@@ -76,9 +77,10 @@ export default function Table() {
     if (code) { const token = localStorage.getItem(`mercy-seat-${code}`); if (token) setSession({ code, token }); else if (requested) { setJoinCode(code); setJoinOpen(true); } }
     try { const saved = localStorage.getItem("mercy-config"); if (saved) setConfig({ ...DEFAULT_CONFIG, ...JSON.parse(saved) }); } catch { /* use defaults */ }
   }, []);
-  const live = useLiveRoom(session, accept, message => {
+  const live = useLiveRoom(session, accept, (message, sourceToken) => {
+    if (sourceToken !== sessionRef.current?.token) return;
     if (session) { localStorage.removeItem(`mercy-seat-${session.code}`); localStorage.removeItem("mercy-last-room"); }
-    setSession(null); setView(null); setError(message);
+    sessionRef.current = null; viewRef.current = null; setSession(null); setView(null); setError(message);
   });
   const online = !session || live.connection === "live" || live.connection === "limited";
   useEffect(() => {

@@ -4,7 +4,7 @@ A real-time, room-code multiplayer card game for 3–6 players, deployed on Clou
 
 **Play:** https://no-mercy-table.passion-fruit.workers.dev/
 
-**Release:** v2026.10.21.1
+**Release:** v2026.10.21.2
 
 Click another player's avatar for five original cartoon props: tomato, water bucket, rubber ducks, spring glove, and rainbow confetti. All seated players see the same attributed event, with shared animation timing and server-enforced cooldowns. Props preserve hands, turns, card logs and match replays. They support pause/resume, the existing mute setting and reduced motion. No production database migration is required.
 

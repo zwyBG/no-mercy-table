@@ -8,7 +8,7 @@ import { LiveActions } from "@/lib/live-actions";
 type View = ReturnType<typeof publicView>;
 export type Connection = "idle" | "connecting" | "live" | "reconnecting" | "limited" | "offline";
 
-export function useLiveRoom(session: { code: string; token: string } | null, onView: (view: View) => void, onExpired: (message: string) => void) {
+export function useLiveRoom(session: { code: string; token: string } | null, onView: (view: View, token: string) => void, onExpired: (message: string, token: string) => void) {
   const [connection, setConnection] = useState<Connection>("idle");
   const [latencyMs,setLatencyMs]=useState<number|null>(null);
   const actions=useRef(new LiveActions());
@@ -21,7 +21,7 @@ export function useLiveRoom(session: { code: string; token: string } | null, onV
     let pingAt=0,pingSent=false;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined, authTimer: ReturnType<typeof setTimeout> | undefined, fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     let fallbackRunning = false,lastHeartbeat=0;
-    const expire = (message: string) => { if (!active) return; active = false; actions.current.bind(null); callbacks.current.onExpired(message); socket?.close(); };
+    const expire = (message: string) => { if (!active) return; active = false; actions.current.bind(null); callbacks.current.onExpired(message,session.token); socket?.close(); };
     const fallback = async () => {
       if (!active || socket?.readyState === WebSocket.OPEN || fallbackRunning) return;
       fallbackRunning = true; let delay = document.hidden ? 25000 : 1800;
@@ -31,14 +31,14 @@ export function useLiveRoom(session: { code: string; token: string } | null, onV
         if (!active) return;
         if ([401, 404].includes(response.status)) { expire(data.error || "座位凭证已失效，请重新加入"); return; }
         if (!response.ok) throw new Error();
-        callbacks.current.onView(data); setConnection("limited");
+        callbacks.current.onView(data,session.token); setConnection("limited");
         if(data.status==="lobby"&&!document.hidden)delay=3000;
         const g = data.game, pending = g?.pending, actor = pending ? pending.kind === "return" ? pending.target : pending.actor : g?.turn;
         const timed = !data.pause && (data.status === "dealing" || data.status === "resolving" || g?.drawing || g?.knockout || data.players.some(p => p.id === actor && (p.bot || p.autoplay)));
         if (timed && !document.hidden) {
           const tick=await fetch("/api/room", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` }, body: JSON.stringify({ type: "tick", code: session.code }), signal: AbortSignal.timeout(7000) });
           const progressed=await readApiResponse<View>(tick);
-          if(active&&tick.ok&&progressed.code===session.code)callbacks.current.onView(progressed);
+          if(active&&tick.ok&&progressed.code===session.code)callbacks.current.onView(progressed,session.token);
           delay = 600;
         }
         if(Date.now()-lastHeartbeat>=20000){
@@ -68,11 +68,11 @@ export function useLiveRoom(session: { code: string; token: string } | null, onV
           if (data.type === "expired") return expire(data.error);
           if(data.type === "ack") {
             actions.current.receive(data);
-            if(data.view?.code===session.code)callbacks.current.onView(data.view);
+            if(data.view?.code===session.code)callbacks.current.onView(data.view,session.token);
             return;
           }
           if (data.type === "view" && data.view?.code === session.code) {
-            failures = 0; clearTimeout(authTimer); clearTimeout(fallbackTimer); setConnection("live"); callbacks.current.onView(data.view);
+            failures = 0; clearTimeout(authTimer); clearTimeout(fallbackTimer); setConnection("live"); callbacks.current.onView(data.view,session.token);
             if(data.protocol>=2&&!actionSenderBound){actions.current.bind(frame=>{if(current!==socket||current.readyState!==WebSocket.OPEN)throw new Error("Socket unavailable");current.send(frame);});actionSenderBound=true;}
             if(!pingSent){pingSent=true;pingAt=performance.now();current.send("ping");}
           }
