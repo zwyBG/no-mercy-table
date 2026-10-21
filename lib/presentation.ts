@@ -3,7 +3,8 @@ export const TRANSFER_TIMING = {
   single: { duration: 1250, reveal: 900, first: 100, flight: 800 },
 } as const;
 export type AttackCue = { from: string; to: string; fromName: string; toName: string; amount: number; total: number; chain: number[] };
-export type EffectEvent = { id: number; text: string; effect?: string; cue?: AttackCue };
+export type JumpCue = { from: string; to: string; fromName: string; toName: string };
+export type EffectEvent = { id: number; text: string; effect?: string; cue?: AttackCue; jump?: JumpCue };
 
 // Visual/audio lifetimes only. They never delay a legal game action.
 // These cover complete announcement WAVs when no newer action interrupts.
@@ -17,7 +18,7 @@ export function effectDuration(kind: string): number {
   return 1200;
 }
 export const DRAW_DELIVERY_DURATION = 1100;
-export const ADVANCING_ACTIONS = new Set(["play", "draw", "uno", "catch", "chooseZero", "chooseSeven", "skipSeven", "target", "pick", "color", "drawRoulette", "reset", "start"]);
+export const ADVANCING_ACTIONS = new Set(["play", "jump", "draw", "uno", "catch", "chooseZero", "chooseSeven", "skipSeven", "target", "pick", "color", "drawRoulette", "reset", "start"]);
 
 // Keep only the latest event. A newer action replaces the active effect.
 export class EffectQueue {

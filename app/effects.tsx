@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Volume2, VolumeX } from "lucide-react";
-import { EffectQueue, effectDuration, type AttackCue } from "@/lib/presentation";
+import { EffectQueue, effectDuration, type AttackCue, type JumpCue } from "@/lib/presentation";
 import type { SocialKind } from "@/lib/social";
 
 const EFFECTS: Record<string, { title: string; symbol: string; voice: string; tone: string; notes: number[] }> = {
+  jump: { title: "JUMP IN!", symbol: "ϟ", voice: "", tone: "gold", notes: [330, 494, 659] },
   finish: { title: "手牌清空！其他人继续", symbol: "SAFE!", voice: "", tone: "gold", notes: [392, 523, 659] },
   end: { title: "本局排位结束！", symbol: "GG!", voice: "", tone: "purple", notes: [392, 330, 262] },
   begin: { title: "LET’S GO!", symbol: "GO!", voice: "", tone: "orange", notes: [131, 262, 392] },
@@ -27,7 +28,7 @@ const EFFECTS: Record<string, { title: string; symbol: string; voice: string; to
 };
 const VOICES: Record<string, string> = { draw2: "announcer-add-two", draw4: "announcer-add-four", reverse4: "announcer-reverse-four", draw6: "announcer-add-six", draw10: "announcer-add-ten", skip: "announcer-skip", reverse: "announcer-reverse", skipall: "announcer-skip-all", discard: "announcer-discard", roulette: "announcer-roulette", seven: "announcer-seven", zero: "announcer-zero", uno: "announcer-uno", win: "announcer-win", out: "announcer-out", penalty: "announcer-penalty", begin: "announcer-begin" };
 type Source = { code: string; version: number; logs: import("@/lib/presentation").EffectEvent[]; pause?: unknown; social?:{events:{id:string}[]}; game?: { round?: number; transfer?: unknown; deal?: { dealt: number } | null; drawing?: { drawn: number } | null } | null } | null;
-export type Visual = { id: number; kind: string; text: string; cue?: AttackCue; duration: number } | null;
+export type Visual = { id: number; kind: string; text: string; cue?: AttackCue; jump?: JumpCue; duration: number } | null;
 
 export function useTableEffects(source: Source) {
   const [sound, setSound] = useState(true), [shake, setShake] = useState(1), [visual, setVisual] = useState<Visual>(null);
@@ -122,7 +123,7 @@ export function useTableEffects(source: Source) {
     const event = queue.current.next(); if (!event) { setPendingCount(0); return; }
     const kind = event.effect || "play", voiceDuration = play(kind);
     const duration = Math.max(effectDuration(kind), voiceDuration);
-    setVisual(EFFECTS[kind] ? { id: event.id, kind, text: event.text, cue: event.cue, duration } : null);
+    setVisual(EFFECTS[kind] ? { id: event.id, kind, text: event.text, cue: event.cue, jump: event.jump, duration } : null);
     setPendingCount(queue.current.pending.length + 1); arm(duration);
   };
   useEffect(() => {
@@ -187,6 +188,7 @@ export function ActionEffect({ visual, paused = false, me }: { visual: Visual; p
   return <div key={visual.id} data-effect-id={visual.id} data-paused={paused} className={`fx-stage fx-${effect.tone} fx-kind-${visual.kind} ${visual.cue ? "fx-attack" : ""}`} style={{ "--fx-duration": `${visual.duration}ms` } as CSSProperties} aria-hidden="true">
     <div className="fx-flash" /><div className="fx-speed-lines" /><div className="fx-shockwave" /><div className="fx-screen-word">{effect.title}</div>
     {visual.cue && <AttackFlight cue={visual.cue} />}
+    {visual.jump && <div className="fx-jump-caption"><b>ϟ 抢出！</b><span>{visual.jump.toName}</span><span>{visual.jump.from === visual.jump.to ? "连续抢出" : `抢在 ${visual.jump.fromName} 之后`}</span></div>}
     <div className="action-fx"><div className="fx-ring" /><div className="fx-ring second-ring" /><div className="fx-burst">{Array.from({ length: 24 }, (_, i) => <i key={i} style={{ "--angle": `${i * 360 / 24}deg`, "--distance": `${150 + i % 4 * 38}px`, "--delay": `${i % 4 * 13}ms` } as CSSProperties} />)}</div><div className="fx-stamp"><strong>{effect.symbol}</strong><span>{effect.title}</span></div></div>
     {visual.cue ? <div className="attack-story"><div><span>{visual.cue.fromName}</span><b>➜</b><span>{visual.cue.toName}</span></div><strong>{visual.cue.from === visual.cue.to ? visual.cue.to === me ? "反转回自己！" : "反转回出牌者！" : visual.cue.to === me ? "这波冲你来的！" : "加牌已送达！"}</strong><p>{visual.cue.chain.map((n, i) => <span key={i}>{i > 0 && <i> → </i>}+{n}</span>)}<b> = {visual.cue.total} 张</b></p></div> : <div className="effect-caption">{visual.text}</div>}
   </div>;

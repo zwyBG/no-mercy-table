@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { advanceRoom, applyAction, botAction, createRoom, log, publicView, DEFAULT_CONFIG, type Room, type Player, type Action } from "@/lib/game";
 import { commitRoomAction } from "@/lib/room-commit";
+import { validRoomCommand } from "@/lib/room-command";
 
 export const dynamic = "force-dynamic";
 const response = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store, private", "X-Content-Type-Options": "nosniff" } });
@@ -55,7 +56,13 @@ export async function POST(request: Request) {
         if (inserted.meta.changes) { await touch(code, p.id); return response({ token, view: publicView(room, p.id, { [p.id]: Date.now() }, 1) }); }
       } return response({ error: "创建房间繁忙，请重试" }, 503);
     }
-    const code = validCode(a.code), row = await read(code); if (!row) return response({ error: "没有找到这个房间" }, 404);
+    const code = validCode(a.code);
+    if(env.ROOMS && !["join","heartbeat"].includes(a.type)) {
+      if(a.type!=="tick"&&!validRoomCommand(a))return response({error:"操作凭证无效"},400);
+      const result=await env.ROOMS.getByName(code).fetch(`https://room.internal/${a.type==="tick"?"tick":"action"}?code=${code}`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:request.headers.get("Authorization")||""},body:JSON.stringify({...a,code})});
+      return new Response(result.body,{status:result.status,headers:new Headers(result.headers)});
+    }
+    const row = await read(code); if (!row) return response({ error: "没有找到这个房间" }, 404);
     const { room, version } = row;
     if (a.type === "join") {
       if (room.status !== "lobby") return response({ error: "这桌已经开始，请等待下一局" }, 400);

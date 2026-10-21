@@ -4,6 +4,7 @@ import { TRANSFER_TIMING, ADVANCING_ACTIONS, DRAW_DELIVERY_DURATION, effectDurat
 import { sendSocial, publicSocial, type SocialState } from "./social.ts";
 import { actionKey } from "./action-intent.ts";
 import { settleRoundScores } from "./room-scores.ts";
+import { jumpCards, jumpDirection, type JumpWindow } from "./jump-in.ts";
 
 export type Color = "red" | "yellow" | "green" | "blue";
 export const COLORS: Color[] = ["red", "yellow", "green", "blue"];
@@ -22,6 +23,7 @@ export type Game = { deck: Card[]; discard: Card[]; retired: Card[]; color: Colo
   penaltyChain?: { player: string; value: number; color: Card["color"] }[];
   history?: MatchHistory;
   delivery?: { id: string; player: string; ordinal: number; total: number; mode: string };
+  jump?: JumpWindow | null;
 };
 export type Room = { code: string; host: string; config: Config; players: Player[]; status: "lobby" | "dealing" | "playing" | "resolving" | "finished"; game: Game | null; logs: EffectEvent[]; serial: number; actions: string[]; rounds: number; scores?: Record<string,number>; lastScoredRound?: number; nextStarter?: string | null; botAt?: number; presentationUntil?: number; social?: SocialState; pause?: { by: string; at: number } | null };
 export type Action = { type: string; [key: string]: unknown };
@@ -126,7 +128,7 @@ function receive(r: Room, p: Player, c: Card) {
   if (g.drawing || g.pending?.kind === "roulette") g.delivery = { id: crypto.randomUUID(), player: p.id, ordinal: g.drawing ? g.drawing.drawn + 1 : (g.pending?.drawn || 0) + 1, total: g.drawing?.total || 0, mode: g.drawing?.mode || "roulette" };
   if (p.hand.length >= 25) eliminate(r, p);
 }
-function beginDraw(r: Room, p: Player, mode: "penalty" | "until" | "single" | "catch", total: number) { r.game!.drawing = { player: p.id, mode, total, drawn: 0, nextAt: Date.now() + 180 }; }
+function beginDraw(r: Room, p: Player, mode: "penalty" | "until" | "single" | "catch", total: number) { r.game!.jump = null; r.game!.drawing = { player: p.id, mode, total, drawn: 0, nextAt: Date.now() + 180 }; }
 function beginTransfer(r: Room, kind: Transfer["kind"], from: string, to: string, fromCount: number, toCount: number) {
   r.game!.transfer = { id: crypto.randomUUID(), kind, from, to, fromCount, toCount, startedAt: Date.now(), duration: kind === "swap" ? TRANSFER_TIMING.swap.duration : TRANSFER_TIMING.single.duration };
 }
@@ -136,6 +138,7 @@ function finishTurn(r: Room, from: string, steps = 1, affected = [from]) {
   r.game!.risk = r.players.filter(p => affected.includes(p.id) && stillPlaying(p) && p.hand.length === 1 && !p.uno).map(p => p.id);
 }
 function withdrawSeat(r: Room, p: Player, kicked = false) {
+  if (r.game) r.game.jump = null;
   if (r.status === "dealing") {
     r.status = "lobby"; r.game = null; r.pause = null; delete r.presentationUntil;
     r.players.forEach(q => { q.hand = []; q.ready = q.id === r.host || !!q.bot; });
@@ -189,6 +192,7 @@ export function cardBlockReason(r: Room, id: string, card: Card): string | null 
   if (!g || r.status !== "playing") return r.status === "dealing" ? "正在发牌，可以先整理手牌" : "请等待下一局开始";
   if (g.knockout) return "正在结算淘汰，请稍候";
   if (g.drawing) return "请等待逐张摸牌完成";
+  if (jumpCards(r, id).some(c => c.id === card.id)) return null;
   if (g.pending) return "先完成换牌或颜色轮盘";
   if (g.turn !== id) return "还没轮到你，可以先选牌、理牌";
   if (canPlay(r, card)) return null;
@@ -256,13 +260,15 @@ function advanceRoomInternal(r: Room, now: number): boolean {
   if (r.status === "resolving" && g.result && now >= g.result.revealAt) { g.winner = g.result.candidate; r.status = "finished"; settleRoundScores(r); log(r, g.loser ? `${player(r,g.loser).name} 成为本局最后一名，排位结束` : "本局排位结束", "end"); return true; }
   return false;
 }
-function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unknown) {
+function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unknown, jumpedFrom?: string) {
   const g = r.game!;
   if (card.color === "wild" && card.kind !== "roulette") assert(COLORS.includes(color as Color), "请选择接下来的颜色");
+  g.jump = { top: card.id, actor: p.id, direction: g.direction, color: g.color, blocked: [] };
   g.forced = null; p.hand.splice(p.hand.findIndex(c => c.id === card.id), 1);
   if (card.kind === "discard") { const extra = p.hand.filter(c => c.color === card.color); p.hand = p.hand.filter(c => c.color !== card.color); g.discard.push(...extra); }
   g.discard.push(card); if (card.color !== "wild") g.color = card.color; else if (card.kind !== "roulette") g.color = color as Color;
-  p.uno = p.hand.length === 1 && uno === true; const playEvent = log(r, `${p.name} 出了${cardLabel(card)}${p.uno ? " · UNO！" : ""}`, card.kind === "number" ? card.number === 7 ? "seven" : card.number === 0 ? "zero" : "play" : card.kind);
+  p.uno = p.hand.length === 1 && uno === true; const playEvent = log(r, `${p.name} ${jumpedFrom ? "抢出了" : "出了"}${cardLabel(card)}${p.uno ? " · UNO！" : ""}`, card.kind === "number" ? card.number === 7 ? "seven" : card.number === 0 ? "zero" : jumpedFrom ? "jump" : "play" : card.kind);
+  if (jumpedFrom) playEvent.jump = { from: jumpedFrom, to: p.id, fromName: player(r, jumpedFrom).name, toName: p.name };
   if (!p.hand.length) {
     if (drawValue(card) || card.kind === "roulette") { g.finishers = [...(g.finishers || []), p.id]; log(r, `${p.name} 已出完手牌，等待最后一张效果结算`); }
     else { awardFinish(r,p.id); finishTurn(r,p.id); survivors(r); return; }
@@ -271,6 +277,8 @@ function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unkn
   if (card.kind === "number" && card.number === 0) { g.pending = { kind: "zero", actor: p.id }; return; }
   if (card.kind === "reverse" || card.kind === "reverse4") g.direction = g.direction === 1 ? -1 : 1;
   const active = r.players.filter(stillPlaying).length;
+  if (card.kind === "skipall") g.jump.blocked = r.players.filter(q => stillPlaying(q) && q.id !== p.id).map(q => q.id);
+  else if (card.kind === "skip" || card.kind === "reverse" && active === 2) g.jump.blocked = [nextPlayer(r, p.id)];
   if (drawValue(card)) { g.penaltyChain = [...(g.penaltyChain || []), { player: p.id, value: drawValue(card), color: card.color }]; g.penalty += drawValue(card); g.lastDraw = drawValue(card); finishTurn(r, p.id, card.kind === "reverse4" && active === 2 ? 2 : 1); playEvent.cue = { from: p.id, to: g.turn, fromName: p.name, toName: player(r, g.turn).name, amount: drawValue(card), total: g.penalty, chain: g.penaltyChain.map(s => s.value) }; return; }
   if (card.kind === "roulette") { const target = nextPlayer(r, p.id); g.turn = target; g.pending = { kind: "roulette", actor: target }; return; }
   finishTurn(r, p.id, card.kind === "skipall" ? active : card.kind === "skip" || (card.kind === "reverse" && active === 2) ? 2 : 1);
@@ -374,11 +382,20 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
     const target = player(r, String(a.target)); assert(!g.pending && target.id !== id && g.risk.includes(target.id) && target.hand.length === 1 && !target.uno && stillPlaying(target), "现在没有可抓的漏喊");
     g.risk = g.risk.filter(x => x !== target.id); log(r, `${p.name} 抓到 ${target.name} 漏喊 UNO，罚抽 2 张`); beginDraw(r, target, "catch", 2); return r;
   }
+  if (a.type === "jump") {
+    const card = jumpCards(r, id).find(c => c.id === a.card);
+    assert(card && a.top === g.jump?.top, "抢出机会已变化，请按当前牌面操作");
+    if (card.color === "wild" && card.kind !== "roulette") assert(COLORS.includes(a.color as Color), "请选择接下来的颜色");
+    const from = g.jump!.actor, direction = jumpDirection(r, id), previousColor = g.jump!.color;
+    g.direction = direction; g.color = previousColor; g.turn = id; g.pending = null; g.penalty = 0; g.lastDraw = 0; g.penaltyChain = []; g.forced = null; g.risk = [];
+    resolvePlay(r, p, card, a.color, a.uno, from); return r;
+  }
   if (g.pending) {
     const pending = g.pending;
     if (pending.kind === "zero") {
       assert(pending.actor === id, "请等待出 0 的玩家选择");
       assert(a.type === "chooseZero" && typeof a.rotate === "boolean", "请选择按顺序传牌或不换牌");
+      g.jump = null;
       const active = r.players.filter(stillPlaying);
       if (a.rotate) {
         const hands = new Map(active.map(q => [q.id, q.hand]));
@@ -391,21 +408,23 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
       assert(pending.actor === id, "请等待下一位玩家操作颜色轮盘");
       if (a.type === "color") { assert(!pending.color && COLORS.includes(a.color as Color), "请选择轮盘颜色"); g.risk = []; pending.color = a.color as Color; pending.drawn = 0; g.color = pending.color; log(r, `${p.name} 选择${COLOR_NAMES[pending.color]}色，请逐张点击牌堆抽牌`); return r; }
       assert(a.type === "drawRoulette" && pending.color, "请先选择颜色，再逐张抽牌");
+      g.jump = null;
       const c = drawOne(r); receive(r, p, c); pending.drawn = (pending.drawn || 0) + 1;
       log(r, `${p.name} 轮盘抽了第 ${pending.drawn} 张${c.color === pending.color ? "，抽中所选颜色" : "，继续抽牌"}`, "take");
       r.presentationUntil = Math.max(r.presentationUntil || 0, Date.now() + DRAW_DELIVERY_DURATION);
       if (!p.out && c.color === pending.color) { finishTurn(r, id); settleFinishers(r); } return r;
     }
     if (pending.kind === "target") {
-      if (a.type === "skipSeven") { assert(pending.actor === id, "请等待出 7 的玩家选择"); assert(r.config.sevenMaySkip !== false, "本桌出 7 必须交换"); log(r, `${p.name} 选择不交换手牌`); finishTurn(r, id); return r; }
+      if (a.type === "skipSeven") { assert(pending.actor === id, "请等待出 7 的玩家选择"); assert(r.config.sevenMaySkip !== false, "本桌出 7 必须交换"); g.jump = null; log(r, `${p.name} 选择不交换手牌`); finishTurn(r, id); return r; }
       if (a.type === "chooseSeven") { assert(r.config.seven === "choice" && pending.actor === id && (a.mode === "swap" || a.mode === "trade"), "只有出 7 的玩家可以选择换牌方式"); pending.sevenMode = a.mode; return r; }
       const mode = pending.sevenMode || r.config.seven; assert(mode === "swap" || mode === "trade", "请先选择换一张或换整手");
       assert(a.type === "target" && pending.actor === id, "请等待出 7 的玩家选择对手"); const target = player(r, String(a.target)); assert(target.id !== id && stillPlaying(target), "请选择另一名在局玩家");
-      if (mode === "swap") { const fromCount = p.hand.length, toCount = target.hand.length; [p.hand, target.hand] = [target.hand, p.hand]; p.uno = false; target.uno = false; log(r, `${p.name} 与 ${target.name} 交换了全部手牌`, "swap"); finishTurn(r, id, 1, [id, target.id]); beginTransfer(r, "swap", id, target.id, fromCount, toCount); }
+      if (mode === "swap") { g.jump = null; const fromCount = p.hand.length, toCount = target.hand.length; [p.hand, target.hand] = [target.hand, p.hand]; p.uno = false; target.uno = false; log(r, `${p.name} 与 ${target.name} 交换了全部手牌`, "swap"); finishTurn(r, id, 1, [id, target.id]); beginTransfer(r, "swap", id, target.id, fromCount, toCount); }
       else g.pending = { kind: "take", actor: id, target: target.id, sevenMode: "trade" }; return r;
     }
     assert(a.type === "pick", "请先完成互抽"); const chooser = pending.kind === "take" ? pending.actor : pending.target!, source = pending.kind === "take" ? pending.target! : pending.actor;
     assert(id === chooser, "请等待对方抽牌"); const other = player(r, source), index = a.index as number; assert(Number.isInteger(index) && index >= 0 && index < other.hand.length, "这张牌已经变化，请重选");
+    g.jump = null;
     const fromCount = other.hand.length, toCount = p.hand.length;
     const [card] = other.hand.splice(index, 1); receive(r, p, card); beginTransfer(r, pending.kind, source, id, fromCount, toCount); log(r, `${p.name} 从 ${other.name} 的手牌抽走一张`, "take");
     if (r.status !== "playing") return r;
@@ -427,7 +446,7 @@ export function publicView(r: Room, id: string, seen: Record<string, number>, ve
   const spectating = !!me && !!g && (!!me.finished || me.out || me.withdrawn || r.status === "finished");
   return { actionKey: actionKey(r,id), spectating, spectatorHands: spectating ? r.players.filter(stillPlaying).map(p => ({id:p.id,name:p.name,cards:p.hand})) : [], nextStarter: r.rounds > 0 && r.players.some(p => p.id === r.nextStarter && !p.removed) ? r.nextStarter : null, code: r.code, host: r.host, config: { ...DEFAULT_CONFIG, ...r.config }, status: r.status, version, me: id, social: publicSocial(r, id, now), pause: r.pause || null, animation: r.presentationUntil ? { remainingMs: presentationRemaining(r) } : null,
     players: r.players.map(p => ({ id: p.id, name: p.name, score: r.scores?.[p.id] || 0, count: p.hand.length, ready: p.ready, out: p.out, withdrawn: !!p.withdrawn, removed: !!p.removed, finished: !!p.finished, rank: g?.placements?.find(e => e.player === p.id)?.rank || null, uno: p.uno, bot: !!p.bot, autoplay: !!p.autoplay, online: !p.removed && (!!p.bot || Date.now() - (seen[p.id] || 0) < 25000), lastSeen: seen[p.id] || 0 })), hand: me?.hand || [], blockedReasons: Object.fromEntries((me?.hand || []).map(c => [c.id, cardBlockReason(r, id, c)])), logs: r.logs,
-    game: g ? { recap: publicRecap(r), delivery: g.delivery || null, top: g.discard[g.discard.length - 1], color: g.color, turn: g.turn, direction: g.direction, penalty: g.penalty, penaltyChain: g.penaltyChain || [], lastDraw: g.lastDraw, pending: g.pending, risk: g.risk, winner: g.winner, loser: g.loser || null, placements: g.placements || [], round: g.round, deckCount: g.deck.length, forced: g.forced, deal: g.deal ? { dealt: g.deal.dealt, total: g.deal.total, lastPlayer: g.deal.lastPlayer } : null, drawing: g.drawing ? { player: g.drawing.player, mode: g.drawing.mode, drawn: g.drawing.drawn, total: g.drawing.total } : null, knockout: g.knockout ? { player: g.knockout.player, count: g.knockout.count } : null, resolution: r.status === "resolving" ? g.result?.reason || "最后一张牌正在结算" : null, transfer: g.transfer ? { id: g.transfer.id, kind: g.transfer.kind, from: g.transfer.from, to: g.transfer.to, fromCount: g.transfer.fromCount, toCount: g.transfer.toCount, duration: g.transfer.duration, remainingMs: Math.max(0, g.transfer.startedAt + g.transfer.duration - now) } : null, finishers: (g.finishers || []).filter(id => !player(r, id).out && player(r, id).hand.length === 0), playable: me && stillPlaying(me) && !me.autoplay && g.turn === id && !g.pending ? me.hand.filter(c => canPlay(r, c)).map(c => c.id) : [] } : null };
+    game: g ? { jump: g.jump ? { top: g.jump.top, actor: g.jump.actor, cards: jumpCards(r,id).map(c => c.id), direction: jumpDirection(r,id) } : null, recap: publicRecap(r), delivery: g.delivery || null, top: g.discard[g.discard.length - 1], color: g.color, turn: g.turn, direction: g.direction, penalty: g.penalty, penaltyChain: g.penaltyChain || [], lastDraw: g.lastDraw, pending: g.pending, risk: g.risk, winner: g.winner, loser: g.loser || null, placements: g.placements || [], round: g.round, deckCount: g.deck.length, forced: g.forced, deal: g.deal ? { dealt: g.deal.dealt, total: g.deal.total, lastPlayer: g.deal.lastPlayer } : null, drawing: g.drawing ? { player: g.drawing.player, mode: g.drawing.mode, drawn: g.drawing.drawn, total: g.drawing.total } : null, knockout: g.knockout ? { player: g.knockout.player, count: g.knockout.count } : null, resolution: r.status === "resolving" ? g.result?.reason || "最后一张牌正在结算" : null, transfer: g.transfer ? { id: g.transfer.id, kind: g.transfer.kind, from: g.transfer.from, to: g.transfer.to, fromCount: g.transfer.fromCount, toCount: g.transfer.toCount, duration: g.transfer.duration, remainingMs: Math.max(0, g.transfer.startedAt + g.transfer.duration - now) } : null, finishers: (g.finishers || []).filter(id => !player(r, id).out && player(r, id).hand.length === 0), playable: me && stillPlaying(me) && !me.autoplay && g.turn === id && !g.pending ? me.hand.filter(c => canPlay(r, c)).map(c => c.id) : [] } : null };
 }
 
 // Bots choose using their own hand and public counts; hidden picks use positions only.

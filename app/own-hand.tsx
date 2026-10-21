@@ -4,8 +4,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { cardLabel, type Card } from "@/lib/game";
 
 type Gesture = { id: string; x: number; y: number; touch: boolean; sorting: boolean; moved: boolean; scrollLeft: number; timer?: ReturnType<typeof setTimeout> };
-export function OwnHand({ cards, layout, selected, playable, disabled, renderCard, onSelect, onReorder, onCommit, onMove, motion = "", animationOffset = 0, outgoingId, incomingIds = [] }: {
-  cards: Card[]; layout: "flat" | "overlap"; selected: string | null; playable: string[]; disabled: boolean; renderCard: (card: Card) => ReactNode;
+export function OwnHand({ cards, layout, selected, playable, jumpable = [], disabled, renderCard, onSelect, onReorder, onCommit, onMove, motion = "", animationOffset = 0, outgoingId, incomingIds = [] }: {
+  cards: Card[]; layout: "flat" | "overlap"; selected: string | null; playable: string[]; jumpable?: string[]; disabled: boolean; renderCard: (card: Card) => ReactNode;
   onSelect: (id: string) => void; onReorder: (id: string, target: string) => void; onCommit: () => void; onMove: (id: string, delta: number) => void; motion?: string; animationOffset?: number; outgoingId?: string; incomingIds?: string[];
 }) {
   const root = useRef<HTMLDivElement>(null), gesture = useRef<Gesture | null>(null);
@@ -51,7 +51,7 @@ export function OwnHand({ cards, layout, selected, playable, disabled, renderCar
     }}
     onPointerCancel={() => { const g = gesture.current; if (g?.timer) clearTimeout(g.timer); if (g?.sorting && g.moved) onCommit(); gesture.current = null; setDragging(null); setHover(null); }}
     onPointerLeave={() => { if (!gesture.current) setHover(null); }}>
-    {cards.map((c, i) => <button key={c.id} data-card-id={c.id} data-magnified={layout === "overlap" && active === c.id} className={`hand-card ${selected === c.id ? "selected-card" : ""} ${playable.includes(c.id) ? "playable" : ""} ${dragging === c.id ? "dragging" : ""} ${layout === "overlap" && active === c.id ? "hand-hovered" : ""} ${outgoingId === c.id ? "hand-card-leaving" : ""} ${incomingIds.includes(c.id) ? "hand-card-arriving" : ""}`} disabled={disabled} aria-label={`${cardLabel(c)}${selected === c.id ? "，已选中" : ""}`} aria-pressed={selected === c.id}
+    {cards.map((c, i) => <button key={c.id} data-card-id={c.id} data-magnified={layout === "overlap" && active === c.id} className={`hand-card ${selected === c.id ? "selected-card" : ""} ${playable.includes(c.id) ? "playable" : ""} ${jumpable.includes(c.id) ? "jumpable" : ""} ${dragging === c.id ? "dragging" : ""} ${layout === "overlap" && active === c.id ? "hand-hovered" : ""} ${outgoingId === c.id ? "hand-card-leaving" : ""} ${incomingIds.includes(c.id) ? "hand-card-arriving" : ""}`} disabled={disabled} aria-label={`${cardLabel(c)}${jumpable.includes(c.id) ? "，可以抢出" : ""}${selected === c.id ? "，已选中" : ""}`} aria-pressed={selected === c.id}
       style={{ left: layout === "overlap" ? `${inset + i * step}px` : undefined, zIndex: dragging === c.id ? 200 : active === c.id ? 100 : i, "--fan-tilt": `${cards.length > 1 ? (i / (cards.length - 1) - .5) * 6 : 0}deg` } as CSSProperties}
       onClick={e => { if (e.detail === 0) onSelect(c.id); }} onFocus={() => { if (layout === "overlap") setHover(c.id); }} onBlur={() => setHover(null)}
       onKeyDown={e => { if (e.altKey && ["ArrowLeft", "ArrowRight"].includes(e.key)) { e.preventDefault(); onMove(c.id, e.key === "ArrowRight" ? 1 : -1); } }}>{renderCard(c)}</button>)}

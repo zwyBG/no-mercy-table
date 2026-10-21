@@ -7,6 +7,7 @@ import "./hand-tray.css";
 import "./chrome.css";
 import "./social.css";
 import "./spectator.css";
+import "./jump-in.css";
 
 export const metadata: Metadata = {
   title: "毫不留情 · 朋友牌桌",

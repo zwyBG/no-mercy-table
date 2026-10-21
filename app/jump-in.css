@@ -1,0 +1,16 @@
+.jump-in-prompt { display:flex; align-items:center; gap:10px; flex:none; min-height:54px; margin:7px 24px 0; padding:7px 11px; border:1px solid #e1bf78; border-radius:11px; background:linear-gradient(105deg,#fff4d9,#fffaf0); color:#8d6225; animation:jump-prompt-in .22s ease-out; }
+.jump-in-icon { display:grid; place-items:center; width:31px; height:31px; flex:none; border-radius:9px; background:#f8e2ae; color:#a57024; }
+.jump-in-prompt>div { flex:1; min-width:0; }
+.jump-in-prompt strong { display:flex; gap:9px; align-items:center; font-size:12px; font-weight:650; line-height:1.5; }.jump-in-prompt strong>span { font-size:11px; font-weight:500; }
+.jump-in-prompt small { display:block; font-size:10px; line-height:1.5; color:#a48656; }
+.jump-in-button { display:flex; align-items:center; justify-content:center; gap:5px; flex:none; min-height:38px; padding:8px 13px; border-radius:8px; background:#a96b27; color:#fff; font-size:11px; font-weight:600; box-shadow:0 2px 6px #93642318; }
+.jump-in-button:hover:not(:disabled) { background:#91571e; }.jump-in-button:focus-visible { outline:3px solid #e2b861; outline-offset:3px; }
+.modal .jump-in-prompt { margin:0 0 18px; }
+.hand-card.jumpable .playing-card { box-shadow:0 0 0 2px #e6b455,0 4px 15px #c48a3540; }
+.hand-card.jumpable:after { content:'ϟ'; display:grid; place-items:center; width:16px; height:16px; left:calc(50% - 8px); bottom:-12px; color:#fff; background:#b87927; font-size:12px; font-weight:800; line-height:1; border-radius:50%; }
+.hand-actions .play-button.jump-confirm { background:#a96b27; border-color:#a96b27; color:#fff; }
+.fx-jump-caption { position:absolute; left:50%; top:clamp(70px,16vh,170px); transform:translateX(-50%); display:flex; align-items:center; gap:12px; padding:12px 22px; border:2px solid #ffd47a; border-radius:12px; background:#5d3c20e8; color:#fff3d8; box-shadow:0 8px 40px #8a551530; font-size:13px; white-space:nowrap; animation:jump-prompt-in .2s ease-out; }
+.fx-jump-caption b { color:#ffd47a; font-size:21px; font-style:italic; }.fx-jump-caption span { max-width:200px; overflow:hidden; text-overflow:ellipsis; }
+@keyframes jump-prompt-in { from { opacity:0; translate:0 6px; } to { opacity:1; translate:0 0; } }
+@media(max-width:760px) { .jump-in-prompt { margin:5px 10px 0; gap:7px; padding:6px 8px; }.jump-in-icon { width:27px; height:30px; }.jump-in-prompt strong { font-size:11px; gap:5px; }.jump-in-prompt small { font-size:9px; }.jump-in-button { padding:8px 9px; font-size:10px; }.fx-jump-caption { width:max-content; max-width:calc(100vw - 30px); gap:8px; padding:10px 14px; font-size:11px; }.fx-jump-caption b { font-size:17px; }.fx-jump-caption span { max-width:105px; } }
+@media(prefers-reduced-motion:reduce) { .jump-in-prompt,.fx-jump-caption { animation:none; } }

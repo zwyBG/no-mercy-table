@@ -3,10 +3,10 @@ import type { Action, Card, Color, Room } from "./game";
 export type PublicCard = Pick<Card, "color" | "kind" | "number">;
 export type ReplaySeat = { id: string; count: number; out: boolean; finished?: boolean; rank?: number };
 export type ReplayFrame = {
-  id: number; at: number; kind: "opening" | "play" | "swap" | "trade" | "rotation" | "roulette" | "draw" | "penalty" | "knockout" | "finish" | "leave";
+  id: number; at: number; kind: "opening" | "play" | "jump" | "swap" | "trade" | "rotation" | "roulette" | "draw" | "penalty" | "knockout" | "finish" | "leave";
   text: string; actor?: string; target?: string; card?: PublicCard; color: Color; direction: 1 | -1;
   counts: ReplaySeat[]; before?: ReplaySeat[]; penalty: number; amount?: number; drawn?: number;
-  chain?: { player: string; value: number; color: Card["color"] }[];
+  chain?: { player: string; value: number; color: Card["color"] }[]; jumpFrom?: string; canceledPenalty?: number;
 };
 export type MatchHistory = {
   startedAt: number; endedAt?: number; reason?: string; serial: number; plays: number; trimmed: number; partial: boolean;
@@ -24,7 +24,8 @@ export function roundSnapshot(r: Room, actor?: string, action?: Action) {
   const g = r.game;
   return { status: r.status, counts: seats(r), pending: g?.pending ? { ...g.pending } : null,
     drawing: g?.drawing ? { ...g.drawing } : null,
-    card: action?.type === "play" ? r.players.find(p => p.id === actor)?.hand.find(c => c.id === action.card) : undefined };
+    jumpActor: g?.jump?.actor, penalty: g?.penalty || 0,
+    card: action?.type === "play" || action?.type === "jump" ? r.players.find(p => p.id === actor)?.hand.find(c => c.id === action.card) : undefined };
 }
 type Before = ReturnType<typeof roundSnapshot>;
 function append(r: Room, frame: Pick<ReplayFrame, "kind" | "text"> & Partial<ReplayFrame>) {
@@ -49,10 +50,12 @@ export function recordRoundChange(r: Room, before: Before, actor?: string, actio
   if ((r.status === "playing" && before.status === "dealing" || before.status === "lobby" && r.status === "playing") && !h.events.some(e => e.kind === "opening")) {
     append(r, { kind: "opening", text: `发牌完成，${name(r, g.turn)} 先出牌` });
   }
-  if (action?.type === "play" && before.card) {
+  if ((action?.type === "play" || action?.type === "jump") && before.card) {
     const c = before.card; h.plays++;
-    const text = r.logs.findLast(e => e.text.startsWith(`${name(r, actor)} 出了`))?.text || `${name(r, actor)} 出牌`;
-    const event = append(r, { kind: "play", actor, card: publicCard(c), target: g.penalty || c.kind === "roulette" ? g.turn : undefined, text: text + (g.penalty ? `，累计 ${g.penalty} 张 → ${name(r, g.turn)}` : ""), before: before.counts,
+    const jumped = action.type === "jump";
+    const text = r.logs.findLast(e => e.text.startsWith(`${name(r, actor)} ${jumped ? "抢出了" : "出了"}`))?.text || `${name(r, actor)} 出牌`;
+    const event = append(r, { kind: jumped ? "jump" : "play", actor, card: publicCard(c), target: g.penalty || c.kind === "roulette" ? g.turn : undefined, text: text + (jumped ? `，抢在 ${name(r, before.jumpActor)} 之后${before.penalty ? `，取消原 +${before.penalty}` : ""}，改为${g.direction === 1 ? "顺时针" : "逆时针"}` : "") + (g.penalty ? `，累计 ${g.penalty} 张 → ${name(r, g.turn)}` : ""), before: before.counts,
+      ...(jumped ? {jumpFrom:before.jumpActor,canceledPenalty:before.penalty} : {}),
       ...(g.penalty ? { chain: (g.penaltyChain || []).map(s => ({ ...s })) } : {}) });
     h.lastPlay = event;
     if (g.penalty && (!h.maxPenalty || g.penalty >= h.maxPenalty.total)) h.maxPenalty = { total: g.penalty, chain: event.chain || [], drawn: 0, event };
@@ -112,10 +115,10 @@ export function publicRecap(r: Room) {
 }
 
 export function keyReplayFrames(events: ReplayFrame[]) {
-  const ids = new Set(events.filter(e => ["swap", "trade", "rotation", "penalty", "knockout", "finish", "roulette"].includes(e.kind) || (e.kind === "play" && (!!e.penalty || e.card?.number === 0 || e.card?.number === 7))).map(e => e.id));
+  const ids = new Set(events.filter(e => ["jump", "swap", "trade", "rotation", "penalty", "knockout", "finish", "roulette"].includes(e.kind) || (e.kind === "play" && (!!e.penalty || e.card?.number === 0 || e.card?.number === 7))).map(e => e.id));
   for (const e of events.filter(e => e.kind === "draw")) if (e.amount && e.amount > 1) ids.add(e.id);
   events.slice(-5).forEach(e => ids.add(e.id));
-  const lastPlay = events.findLast(e => e.kind === "play"); if (lastPlay) ids.add(lastPlay.id);
+  const lastPlay = events.findLast(e => e.kind === "play" || e.kind === "jump"); if (lastPlay) ids.add(lastPlay.id);
   if (events[0]) ids.add(events[0].id);
   return events.filter(e => ids.has(e.id));
 }

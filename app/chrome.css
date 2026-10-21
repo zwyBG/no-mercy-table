@@ -46,6 +46,7 @@
 .feedback-success>span { display:grid; place-items:center; margin:0 auto 14px; width:48px; height:48px; background:#edf4ef; color:#6c957f; border-radius:50%; }
 .feedback-success h3 { font-size:19px; margin:0 0 9px; }.feedback-success p { font-size:12px; color:#8a94a3; line-height:1.8; margin-bottom:25px; }
 .animation-wait { color:#9a87ad!important; }
+.connection-latency { color:#829d8c; font-size:9px; font-variant-numeric:tabular-nums; white-space:nowrap; }.connection-latency[data-slow=true] { color:#b88a5e; }
 .seat-status { display:inline-flex; align-items:center; justify-content:center; gap:5px; }.seat-score { display:inline-flex; align-items:baseline; gap:3px; color:#4f7d69; font-size:10px; font-weight:650; line-height:1.2; font-variant-numeric:tabular-nums; }.seat-score small { font-size:8px; font-weight:400; color:#85928d; }.seat-score[data-negative=true] { color:#af695b; }
 .player-score { margin-left:6px; color:#658772; font-size:10px; font-weight:500; white-space:nowrap; }.player-score[data-negative=true] { color:#af695b; }
 .host-kick-list { border-top:1px solid #e3e7ee; padding-top:9px; margin-top:8px; }.host-kick-list>small { color:#8994a4; font-size:10px; }.host-kick-list>div { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:5px; font-size:11px; }.host-kick-list>div>span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.host-kick-list button { width:auto; flex:none; color:#ac6d60; padding:7px!important; font-size:10px; }

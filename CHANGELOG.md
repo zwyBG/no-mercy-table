@@ -1,5 +1,18 @@
 # Changelog
 
+## v2026.10.21.1 — 2026-10-21
+
+- Add exact-face jump-in for other players and consecutive self-plays, with private matching-card hints, highlighted hands, and explicit jump controls, including pending zero/seven/roulette dialogs. Preserve ordinary penalty stacking as a separate action.
+- Choose jump direction along the shortest active-seat path from the previous player; self/tied paths retain the pre-effect direction. Execute the replacement card once, replacing the previous penalty chain, reverse/skip effect, or unexecuted choice. Skipped seats cannot jump the blocking card.
+- Close jump windows when actual drawing or hand transfer starts, or a zero/seven decision completes. Bind requests to the physical top-card id, serialize simultaneous jump attempts, and preserve idempotent retry, finish placements, hand privacy, public replay, and interruptible effects.
+- Send authenticated player commands over the existing room WebSocket, with explicit acknowledgements immediately after D1 commit. Retain HTTP recovery with the same action id when a connection or acknowledgement is lost, and negotiate support so older clients and servers remain compatible.
+- Route HTTP commands and fallback ticks through the same Durable Object queue as socket commands and server alarms. Avoid extra edge-to-room round trips, acknowledge without waiting for broadcasts, and skip obsolete queued notifications.
+- Cache presence briefly while overlaying current socket connections. Restore all transient caches after object hibernation and preserve existing seat-revocation checks and private hand boundaries.
+- Coalesce manual hand-order changes into background saves that do not hold the foreground play/draw lock. Preserve local card movement, newly received cards, and room/round boundaries.
+- Display connection round-trip time, update HTTP-only games from tick responses immediately, shorten visible fallback polling, and send heartbeats separately at a lower rate.
+- Add coverage for live acknowledgement matching, duplicate and lost acknowledgements, HTTP recovery, serial queue failures, background sorting, and command validation. Validate live play, concurrent sorting, spectator privacy, kick revocation, and HTTP-only drawing in isolated rooms.
+- Cover jump-in seat paths for 3–6 players, self-jumps, replacement effects, skip restrictions, pending-choice cancellation, closed windows, ranking, privacy, stale top cards, and simultaneous requests. Verify desktop and mobile controls against isolated local fixtures.
+
 ## v2026.10.20.9 — 2026-10-20
 
 - Add the zero owner's choice to rotate active players' hands in the current direction or keep their hands. Preserve exact manual order when keeping hands; record the public decision in replay and support bot choices. A final zero that empties a hand keeps the existing immediate placement behavior.

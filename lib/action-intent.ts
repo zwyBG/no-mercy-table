@@ -1,4 +1,5 @@
 import type { Action, Room } from "./game.ts";
+import { jumpCards } from "./jump-in.ts";
 
 // Ignore presentation deadlines, logs and hand ordering. Only state that can
 // change the meaning of a turn action participates in its consistency key.
@@ -13,6 +14,7 @@ export function actionKey(room: Room, id: string): string {
 const independent = new Set(["sort","uno","pause","autoplay","claimHost","leave","kick","social","ready","config","seats","addBots","removeBot"]);
 const turnActions = new Set(["play","draw","catch","chooseZero","chooseSeven","skipSeven","target","pick","color","drawRoulette","reset"]);
 export function canRebaseAction(room: Room, id: string, action: Action): boolean {
+  if (action.type === "jump") return action.top === room.game?.jump?.top && jumpCards(room,id).some(c => c.id === action.card);
   if (independent.has(action.type)) return true;
   return turnActions.has(action.type) && typeof action.actionKey === "string" && action.actionKey === actionKey(room,id);
 }

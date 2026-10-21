@@ -4,7 +4,7 @@ A real-time, room-code multiplayer card game for 3–6 players, deployed on Clou
 
 **Play:** https://no-mercy-table.passion-fruit.workers.dev/
 
-**Release:** v2026.10.20.9
+**Release:** v2026.10.21.1
 
 Click another player's avatar for five original cartoon props: tomato, water bucket, rubber ducks, spring glove, and rainbow confetti. All seated players see the same attributed event, with shared animation timing and server-enforced cooldowns. Props preserve hands, turns, card logs and match replays. They support pause/resume, the existing mute setting and reduced motion. No production database migration is required.
 
@@ -16,11 +16,16 @@ The table uses a wide, frame-free layout with a compact hand count, icon-only ha
 
 Feedback is visible to the account owner at **Cloudflare Dashboard → Storage & databases → D1 → no-mercy-table-db → Studio → player_feedback**. The public game exposes submission only; it has no endpoint for listing feedback. Entries include `nickname`, `message`, UTC `created_at`, and `release`. Repeated submission ids are deduplicated; the server caps new feedback at 30 entries per minute without retaining IP addresses.
 
-Private WebSocket room updates use Cloudflare Durable Objects, with server-driven dealing and bot turns, reconnect support, host pause/resume, and temporary autoplay. D1 remains the authoritative room store so existing rooms can be retained. See [CHANGELOG.md](CHANGELOG.md) for release details.
+Private room commands and updates use the same authenticated Cloudflare Durable Object WebSocket. Commands are acknowledged as soon as their D1 write commits; peer broadcasts and alarm scheduling continue separately. A serialized room queue orders commands and timed work, while short-lived presence caching avoids repeated presence queries on every card. D1 remains authoritative, including for retained rooms. HTTP actions use the same room queue as live commands, and a lost acknowledgement recovers with the identical action id.
+
+Manual arrangement stays responsive locally and saves the latest order in the background, without disabling play or draw buttons. A connection round-trip indicator distinguishes transport latency from game processing time. HTTP-only recovery displays tick responses immediately, polls visible games more frequently, and throttles presence heartbeats. See [CHANGELOG.md](CHANGELOG.md) for release details.
+
+An exact matching card (same printed color and number/symbol, or the same wild type) can jump in after someone else's play or your own. The game privately highlights matching cards and offers an explicit jump action; regular play still stacks penalties normally. The nearest active-seat path from the previous player determines direction, with self/tied paths retaining the direction before the replaced effect. Then only the new card's effect applies: the previous penalty chain or unexecuted choice is canceled. A skipped player cannot jump the blocking skip. Starting a draw, confirming zero/seven, or actually exchanging cards closes that window; completed card movement and discard-all cards are never rolled back. Requests identify the physical top card, so only the first valid simultaneous jump wins. Jump events are included in public replays and interrupt previous animations.
 
 ## Features
 
 - Multiplayer rooms with no account required, plus bots for solo testing.
+- Exact-face jump-in, consecutive self-jumps, shortest-path direction, replacement action-card effects, private hints, and explicit confirmation controls.
 - Continuing placements until one final player remains, plus live hand spectating for finishers, knockouts, and withdrawn players.
 - Persistent room scores, previous-winner starting turns, and host removal controls with seat-access revocation.
 - Five synchronized, original avatar props with distinct animation and sound.
@@ -32,6 +37,7 @@ Private WebSocket room updates use Cloudflare Durable Objects, with server-drive
 - Animated card exchanges, cumulative draw penalties, color roulette, voice effects, and screen shake.
 - Interruptible action announcements, directed draw attacks, and individual card deliveries, with per-device shake strength.
 - Conflict-aware action retries that preserve intent, deduplicate accepted actions, and retain simultaneous manual hand ordering.
+- Acknowledged WebSocket commands, serialized room writes, HTTP recovery, background hand-order saves, and a connection latency indicator.
 - A resizable hand tray with proportionally scaled card faces and automatic spectator collapse after knockout.
 - Current-turn indicators, attributed penalty chains, and explanations for unplayable cards.
 - Post-game highlights and an optional public-event replay with seeking and playback speed controls. Drawn cards and hidden hands are excluded, and replay history is withheld until the round ends.
