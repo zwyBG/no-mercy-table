@@ -4,6 +4,7 @@ dist/
 .vinext/
 .wrangler/
 .env*
+.dev.vars*
 !.env.example
 *.tsbuildinfo
 .DS_Store

@@ -6,7 +6,7 @@ export type ReplayFrame = {
   id: number; at: number; kind: "opening" | "play" | "jump" | "swap" | "trade" | "rotation" | "roulette" | "draw" | "penalty" | "knockout" | "finish" | "leave";
   text: string; actor?: string; target?: string; card?: PublicCard; color: Color; direction: 1 | -1;
   counts: ReplaySeat[]; before?: ReplaySeat[]; penalty: number; amount?: number; drawn?: number;
-  chain?: { player: string; value: number; color: Card["color"] }[]; jumpFrom?: string; canceledPenalty?: number;
+  chain?: { player: string; value: number; color: Card["color"] }[]; jumpFrom?: string; canceledPenalty?: number; copies?: number;
 };
 export type MatchHistory = {
   startedAt: number; endedAt?: number; reason?: string; serial: number; plays: number; trimmed: number; partial: boolean;
@@ -24,7 +24,7 @@ export function roundSnapshot(r: Room, actor?: string, action?: Action) {
   const g = r.game;
   return { status: r.status, counts: seats(r), pending: g?.pending ? { ...g.pending } : null,
     drawing: g?.drawing ? { ...g.drawing } : null,
-    jumpActor: g?.jump?.actor, penalty: g?.penalty || 0,
+    jumpActor: g?.jump?.actor, penalty: g?.penalty || 0, copies: Array.isArray(action?.cards) ? action.cards.length : 1,
     card: action?.type === "play" || action?.type === "jump" ? r.players.find(p => p.id === actor)?.hand.find(c => c.id === action.card) : undefined };
 }
 type Before = ReturnType<typeof roundSnapshot>;
@@ -54,7 +54,7 @@ export function recordRoundChange(r: Room, before: Before, actor?: string, actio
     const c = before.card; h.plays++;
     const jumped = action.type === "jump";
     const text = r.logs.findLast(e => e.text.startsWith(`${name(r, actor)} ${jumped ? "抢出了" : "出了"}`))?.text || `${name(r, actor)} 出牌`;
-    const event = append(r, { kind: jumped ? "jump" : "play", actor, card: publicCard(c), target: g.penalty || c.kind === "roulette" ? g.turn : undefined, text: text + (jumped ? `，抢在 ${name(r, before.jumpActor)} 之后${before.penalty ? `，取消原 +${before.penalty}` : ""}，改为${g.direction === 1 ? "顺时针" : "逆时针"}` : "") + (g.penalty ? `，累计 ${g.penalty} 张 → ${name(r, g.turn)}` : ""), before: before.counts,
+    const event = append(r, { kind: jumped ? "jump" : "play", actor, card: publicCard(c), copies: before.copies, target: g.penalty || c.kind === "roulette" ? g.turn : undefined, text: text + (jumped ? `，抢在 ${name(r, before.jumpActor)} 之后${before.penalty ? `，取消原 +${before.penalty}` : ""}，改为${g.direction === 1 ? "顺时针" : "逆时针"}` : "") + (before.copies > 1 && before.penalty && !jumped ? `，取消原 +${before.penalty}` : "") + (g.penalty ? `，累计 ${g.penalty} 张 → ${name(r, g.turn)}` : ""), before: before.counts,
       ...(jumped ? {jumpFrom:before.jumpActor,canceledPenalty:before.penalty} : {}),
       ...(g.penalty ? { chain: (g.penaltyChain || []).map(s => ({ ...s })) } : {}) });
     h.lastPlay = event;

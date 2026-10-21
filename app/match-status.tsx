@@ -5,7 +5,7 @@ import { COLOR_NAMES, type publicView } from "@/lib/game";
 import type { Connection } from "./use-live-room";
 
 type View = ReturnType<typeof publicView>;
-export function MatchStatus({ view, connection, latencyMs, busy, turnText, onAction, onReconnect, onKick }: { view: View; connection: Connection; latencyMs?:number|null; busy: boolean; turnText: string; onAction: (action: Record<string, unknown>) => unknown; onReconnect: () => void; onKick: (id:string) => void }) {
+export function MatchStatus({ view, connection, busy, turnText, onAction, onReconnect, onKick }: { view: View; connection: Connection; busy: boolean; turnText: string; onAction: (action: Record<string, unknown>) => unknown; onReconnect: () => void; onKick: (id:string) => void }) {
   const g = view.game, me = view.players.find(p => p.id === view.me), host = view.host === view.me;
   const connected = connection === "live" || connection === "limited";
   const current = view.players.find(p => p.id === g?.turn), ownTurn = !view.spectating && view.status === "playing" && g?.turn === view.me && !g.pending && !g.drawing && !g.knockout && !view.pause && !me?.autoplay;
@@ -25,7 +25,7 @@ export function MatchStatus({ view, connection, latencyMs, busy, turnText, onAct
           {host && <div className="host-kick-list"><small>房主 · 管理玩家</small>{view.players.filter(p => p.id !== view.me && !p.removed).map(p => <div key={p.id}><span>{p.name}</span><button disabled={busy || !connected} aria-label={`移出 ${p.name}`} onClick={() => onKick(p.id)}><UserRoundX size={13} />移出</button></div>)}</div>}
         </div></details>
       </div>
-      <div className="match-context"><span className={`match-color match-color-${g?.color}`}><i />{COLOR_NAMES[g?.color || "red"]}色</span><span>{g?.direction === -1 ? "↺ 逆时针" : "↻ 顺时针"}</span>{view.spectating && <span className="spectating-context"><Eye size={12} />观战 · 可查看剩余手牌</span>}<span className={`live-status live-${connection}`}><i />{connection === "live" ? "实时连接" : connection === "limited" ? "兼容连接" : "重连中"}{connection === "live" && latencyMs != null && <small className="connection-latency" data-slow={latencyMs > 350} title="实时连接往返延迟，不包含出牌处理时间">{latencyMs} ms</small>}</span></div>
+      <div className="match-context"><span className={`match-color match-color-${g?.color}`}><i />{COLOR_NAMES[g?.color || "red"]}色</span><span>{g?.direction === -1 ? "↺ 逆时针" : "↻ 顺时针"}</span>{view.spectating && <span className="spectating-context"><Eye size={12} />观战 · 可查看剩余手牌</span>}<span className={`live-status live-${connection}`}><i />{connection === "live" ? "实时连接" : connection === "limited" ? "兼容连接" : "重连中"}</span></div>
     </div>
     {!!g?.penalty && <div className="pressure-track" aria-label="罚抽叠加过程"><div className="pressure-chain">{g.penaltyChain.map((step, index) => <span className="pressure-step" key={index}>{index > 0 && <ChevronRight size={12} />}<span title={`${view.players.find(p => p.id === step.player)?.name} 出的 +${step.value}`} className={`chain-card chain-${step.color}`}>+{step.value}</span></span>)}</div><div className="pressure-total"><small>累计罚抽</small><strong>+{g.penalty}</strong></div><span className="pressure-target">{g.drawing ? "正在逐张抽取" : `${current?.id === view.me ? "由你" : current?.name || "下一位"}接牌`}</span></div>}
     <div className="last-action">{view.pause ? "房主恢复后，发牌与动画从暂停处继续" : lastPlay?.text || "每一张牌，都可能改变局势。"}{offline.length > 0 && <span>{offline.length} 人等待重连 · 座位保留</span>}</div>

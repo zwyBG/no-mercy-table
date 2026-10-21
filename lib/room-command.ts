@@ -1,7 +1,7 @@
 import { publicView, type Action } from "./game.ts";
 import type { commitRoomAction } from "./room-commit.ts";
 
-const actions = new Set(["start","ready","config","seats","addBots","removeBot","pause","autoplay","claimHost","finishDeal","reset","kick","leave","sort","uno","catch","chooseZero","chooseSeven","skipSeven","target","pick","color","drawRoulette","play","jump","draw","social"]);
+const actions = new Set(["start","ready","config","seats","addBots","removeBot","pause","autoplay","claimHost","finishDeal","reset","kick","leave","sort","uno","catch","chooseZero","chooseSeven","skipSeven","target","pick","color","drawRoulette","play","jump","draw","social","devUnlock","devCard","devRoulette","devScore"]);
 export function validRoomCommand(value: unknown): value is Action {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const a = value as Action;

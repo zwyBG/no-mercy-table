@@ -198,7 +198,7 @@ test('a last attack card waits for the cumulative draws before recording its fin
 test('25-card knockout stays visible before its hand is cleared and the last survivor is revealed', () => {
   const r = fresh(); hands(r, Array.from({length:24},()=>card('blue',2))); r.players[2].out = true; r.game.penalty=4; r.game.lastDraw=4;
   perform(r,'A',{type:'draw'}); advanceRoom(r,Math.max(r.game.drawing.nextAt,r.presentationUntil || 0)); assert.equal(r.players[0].out,true); assert.equal(r.players[0].hand.length,25); assert.equal(r.status,'playing'); assert.equal(r.game.winner,null); assert.equal(publicView(r,'A',{},1).game.knockout.count,25);
-  advanceRoom(r,r.game.knockout.until); assert.equal(r.players[0].hand.length,0); assert.equal(r.status,'resolving'); advanceRoom(r,r.game.result.revealAt); assert.equal(r.game.winner,null); assert.equal(r.game.loser,'B');
+  advanceRoom(r,r.game.knockout.until); assert.equal(r.players[0].hand.length,0); assert.equal(r.status,'resolving'); advanceRoom(r,r.game.result.revealAt); assert.equal(r.game.winner,null); assert.equal(r.game.loser,'A');
 });
 test('roulette requires the next player to choose, then exactly one deliberate draw per action', () => {
   const r=fresh(), roulette=card('wild',0,'roulette'); hands(r,[roulette,card()]); r.game.deck=[card('blue',5),card('yellow',3),card('wild',0,'draw10')];

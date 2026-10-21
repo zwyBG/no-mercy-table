@@ -3,5 +3,6 @@ declare namespace Cloudflare {
     DB?: D1Database;
     ROOMS?: DurableObjectNamespace;
     BUCKET?: R2Bucket;
+    DEVELOPER_PASSWORD_HASH?: string;
   }
 }

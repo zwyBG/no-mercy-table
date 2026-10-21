@@ -71,19 +71,34 @@ test('withdrawal grants live spectator hands; a winner keeps spectator access af
   assert.throws(()=>act('C',{type:'draw'}));
 });
 
-test('knockouts fill the middle ranks in reverse departure order; final survivor is still last',t=>{
+test('the first knockout is last and the final survivor ranks ahead of later knockouts',t=>{
   const {r,act,finish}=setup(t,5);act('D',{type:'leave'});act('E',{type:'leave'});finish();
-  assert.deepEqual(r.game.placements.map(p=>[p.player,p.rank,p.scoreDelta]),[['A',1,6],['B',2,4],['E',3,2],['D',4,0],['C',5,-1]]);
+  assert.deepEqual(r.game.placements.map(p=>[p.player,p.rank,p.scoreDelta]),[['A',1,6],['B',2,4],['C',3,2],['E',4,0],['D',5,-1]]);
   conserved(r);
 });
 
-test('the final penalty knockout receives last-place points when the other remaining hands finish together',t=>{
+test('first finish is first and first knockout is last across 3–6 seats, including tied timestamps',t=>{
+  for(const n of [3,4,5,6]){
+    const {r}=setup(t,n),ids=r.players.map(p=>p.id),survivor=ids.at(-1),departures=ids.slice(1,-1);
+    r.game.placements=[{player:'A',kind:'finished',rank:1,count:0,at:1},...departures.map(player=>({player,kind:'knockout',count:25,at:2})),{player:survivor,kind:'last',count:5,at:3}];
+    r.game.winner='A';r.game.loser=survivor;settleRoundScores(r);
+    const expected=['A',survivor,...departures.toReversed()];assert.deepEqual(r.game.placements.map(p=>p.player),expected);assert.equal(r.game.loser,departures[0]);assert.equal(r.scores[departures[0]],-1);assert.equal(r.scores.A,scoreForPlace(n,1));
+    assert.equal(r.game.placements.find(p=>p.player===survivor).rank,2);const totals=structuredClone(r.scores);settleRoundScores(r);assert.deepEqual(r.scores,totals);
+  }
+});
+
+test('when every opponent is knocked out, the final survivor receives first place and starts the next round',t=>{
+  const {r}=setup(t,3);r.game.placements=[{player:'A',kind:'knockout',count:25,at:1},{player:'B',kind:'knockout',count:25,at:2},{player:'C',kind:'last',count:12,at:3}];r.game.winner=null;
+  settleRoundScores(r);assert.deepEqual(r.game.placements.map(p=>[p.player,p.rank,p.scoreDelta]),[['C',1,2],['B',2,0],['A',3,-1]]);assert.equal(r.game.loser,'A');assert.equal(r.nextStarter,'C');
+});
+
+test('the earlier departure stays last when a final penalty knocks out another player',t=>{
   const {r,act,seed}=setup(t);
   const numbers=Array.from({length:20},(_,i)=>({color:'blue',kind:'number',number:i%10}));
   seed([[{color:'red',kind:'draw2'}],[{color:'blue',kind:'draw2'}],[...numbers,...Array.from({length:3},()=>({color:'blue',kind:'skip'})),{color:'blue',kind:'reverse'}],[{color:'green',kind:'number',number:5}]]);
   act('D',{type:'leave'});act('A',{type:'play',card:r.players[0].hand[0].id});act('B',{type:'play',card:r.players[1].hand[0].id});act('C',{type:'draw'});
-  assert.equal(r.status,'finished');assert.equal(r.game.loser,'C');
-  assert.deepEqual(r.game.placements.map(p=>[p.player,p.scoreDelta]),[['A',4],['B',2],['D',0],['C',-1]]);conserved(r);
+  assert.equal(r.status,'finished');assert.equal(r.game.loser,'D');
+  assert.deepEqual(r.game.placements.map(p=>[p.player,p.scoreDelta]),[['A',4],['B',2],['C',0],['D',-1]]);conserved(r);
 });
 
 test('host kick validates permissions, preserves a live round, revokes viewing and survives reset',async t=>{
@@ -94,7 +109,7 @@ test('host kick validates permissions, preserves a live round, revokes viewing a
   const committed=await commitRoomAction({room:r,version:1},'B',{type:'sort',actionId:'revoked',version:1},()=>({hostOffline:false}),{read:async()=>null,save:async()=>{throw new Error('revoked seat must not write');}});
   assert.equal(committed.conflict,'expired');
   act('A',{type:'play',card:r.players[0].hand[0].id});act('C',{type:'play',card:r.players[2].hand[0].id});
-  assert.equal(r.status,'finished');assert.equal(r.scores.B,0);act('A',{type:'reset'});
+  assert.equal(r.status,'finished');assert.equal(r.scores.B,-1);act('A',{type:'reset'});
   assert.equal(r.players.some(p=>p.id==='B'),false);assert.equal(r.scores.A,4);assert.equal(r.config.seats,4);
 });
 

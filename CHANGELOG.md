@@ -1,5 +1,14 @@
 # Changelog
 
+## v2026.10.21.3 — 2026-10-21
+
+- Display server round-trip latency beside the top-left brand throughout the lobby and game. Probe the existing room WebSocket every 10 seconds in the foreground and every 60 seconds in the background, preserving the runtime's hibernation-safe auto-response. Reject overlapping and stale measurements.
+- Add an uncached empty homepage ping with no database access, limited to one request per 30 seconds and suspended while hidden. Reuse existing HTTP synchronization timings in compatibility mode, and distinguish request processing from a pure WebSocket RTT.
+- Allow players to choose a quantity of identical cards and play or jump them together in one atomic action. Highlight the selected copies, support one wild color choice, preserve manual card order, and apply only one final functional effect as with consecutive self-jumps. Record public copy counts without hidden cards and let bots use their own matching copies.
+- Rank successful finishers by completion order, followed by the final active player, then knockouts/withdrawals in reverse departure order. The earliest knockout is last, receives the last-place score, and is identified consistently in resolution, recap and standings. Keep settled historical scores unchanged.
+- Add server-authorized room maintenance for private card replacement, absolute roulette draw targets, and signed score corrections. Keep credentials out of client assets and saved command history; preserve physical card identities, manual order, current round accounting, and spectator privacy.
+- Cover batch validation, effect replacement, conservation, UNO/finishing, idempotent retries, latency sampling, empty ping responses, first-knockout score ordering, private authorization and room maintenance.
+
 ## v2026.10.21.2 — 2026-10-21
 
 - Reject late room views and expired-seat messages from a previous connection after leaving or switching seats. Prevent a buffered socket broadcast from reopening the spectator screen after returning home.

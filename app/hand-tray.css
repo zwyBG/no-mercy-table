@@ -46,6 +46,10 @@
 .hand-tray .hand-actions .uno-button { flex:0 0 68px; }
 .hand-tray .hand-actions .mobile-draw-action { display:flex; flex:0 1 110px; }
 .hand-tray .hand-actions .play-button { flex:1; }
+.batch-play-picker { display:flex; align-items:center; gap:5px; flex:none; color:#8490a2; font-size:10px; }
+.batch-play-picker select { height:44px; width:62px; padding:0 5px; border:1px solid #d6dfe9; border-radius:8px; background:#f7f9fc; color:#65758d; font-size:12px; }
+.batch-fx-count { display:block; margin-top:8px; color:var(--fx); font-size:11px; font-weight:650; }
+.hand-actions[data-batch=true] .play-button { min-width:0; }
 .hand-tray .hand-hint { display:none; }
 .hand-tray[data-compact=true] .selected-tools { display:none; }
 .hand-tray[data-compact=true] .card-feedback:not(.card-blocked):not(.card-ready) { min-height:16px; font-size:9px; }
@@ -63,6 +67,9 @@
   .hand-tray .hand-view-tools { gap:3px; }.hand-tray .hand-layout button,.hand-tray .auto-arrange { width:30px; height:32px; }
   .hand-tray .hand-actions .uno-button { flex-basis:60px; }.hand-tray .hand-actions .mobile-draw-action { flex-basis:90px; }
   .hand-tray .hand-actions button { font-size:11px; padding:10px 8px; }
+  .batch-play-picker>span { display:none; }.batch-play-picker select { width:51px; font-size:11px; }
+  .hand-tray .hand-actions[data-batch=true] { gap:5px; }.hand-tray .hand-actions[data-batch=true] .uno-button { flex-basis:49px; }.hand-tray .hand-actions[data-batch=true] .mobile-draw-action { flex-basis:68px; }
+  .hand-tray .hand-actions[data-batch=true] .play-button { gap:3px; padding-inline:5px; }.hand-tray .hand-actions[data-batch=true] .play-button svg { width:12px; }
 }
 @media(max-height:650px) { .hand-tray .hand-actions { margin-top:2px; }.hand-tray .card-feedback { min-height:20px; } }
 @media(prefers-reduced-motion:reduce) { .game-workspace .hand-area.hand-tray { transition:none; } }

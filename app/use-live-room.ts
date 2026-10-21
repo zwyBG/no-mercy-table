@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { publicView } from "@/lib/game";
 import { readApiResponse } from "@/lib/api-response";
 import { LiveActions } from "@/lib/live-actions";
+import { LATENCY_INTERVAL, LatencyProbe } from "@/lib/latency";
 
 type View = ReturnType<typeof publicView>;
 export type Connection = "idle" | "connecting" | "live" | "reconnecting" | "limited" | "offline";
@@ -17,21 +18,32 @@ export function useLiveRoom(session: { code: string; token: string } | null, onV
   useEffect(() => {
     actions.current.bind(null);setLatencyMs(null);
     if (!session) { setConnection("idle"); return; }
-    let active = true, socket: WebSocket | null = null, failures = 0, lastPong = Date.now();
-    let pingAt=0,pingSent=false;
+    let active = true, socket: WebSocket | null = null, failures = 0;
+    const probe = new LatencyProbe();
+    let pingTimer: ReturnType<typeof setTimeout> | undefined;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined, authTimer: ReturnType<typeof setTimeout> | undefined, fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     let fallbackRunning = false,lastHeartbeat=0;
+    const schedulePing = () => { clearTimeout(pingTimer); if(active && socket?.readyState === WebSocket.OPEN) pingTimer = setTimeout(heartbeat, document.hidden ? LATENCY_INTERVAL.background : LATENCY_INTERVAL.room); };
+    const heartbeat = () => {
+      if (!active || socket?.readyState !== WebSocket.OPEN) return;
+      const now = performance.now();
+      if (probe.timedOut(now) && !document.hidden) { setLatencyMs(null); socket.close(); return; }
+      if (probe.sampledAt === null || now - probe.sampledAt > LATENCY_INTERVAL.stale) setLatencyMs(null);
+      if (probe.begin(now)) socket.send("ping");
+      schedulePing();
+    };
     const expire = (message: string) => { if (!active) return; active = false; actions.current.bind(null); callbacks.current.onExpired(message,session.token); socket?.close(); };
     const fallback = async () => {
       if (!active || socket?.readyState === WebSocket.OPEN || fallbackRunning) return;
       fallbackRunning = true; let delay = document.hidden ? 25000 : 1800;
       try {
+        const started = performance.now();
         const response = await fetch(`/api/room?code=${session.code}`, { headers: { Authorization: `Bearer ${session.token}` }, cache: "no-store", signal: AbortSignal.timeout(8000) });
         const data = await readApiResponse<View & { error?: string }>(response);
-        if (!active) return;
+        if (!active || socket?.readyState === WebSocket.OPEN) return;
         if ([401, 404].includes(response.status)) { expire(data.error || "座位凭证已失效，请重新加入"); return; }
         if (!response.ok) throw new Error();
-        callbacks.current.onView(data,session.token); setConnection("limited");
+        callbacks.current.onView(data,session.token); setConnection("limited"); setLatencyMs(Math.max(1,Math.round(performance.now()-started)));
         if(data.status==="lobby"&&!document.hidden)delay=3000;
         const g = data.game, pending = g?.pending, actor = pending ? pending.kind === "return" ? pending.target : pending.actor : g?.turn;
         const timed = !data.pause && (data.status === "dealing" || data.status === "resolving" || g?.drawing || g?.knockout || data.players.some(p => p.id === actor && (p.bot || p.autoplay)));
@@ -55,14 +67,13 @@ export function useLiveRoom(session: { code: string; token: string } | null, onV
       setConnection(failures ? "reconnecting" : "connecting");
       const url = new URL("/api/room/live", location.href); url.protocol = location.protocol === "https:" ? "wss:" : "ws:"; url.searchParams.set("code", session.code);
       const current = new WebSocket(url); socket = current;
-      let actionSenderBound=false;
-      pingAt=0;pingSent=false;actions.current.bind(null);
+      let actionSenderBound=false,pingSent=false;
+      clearTimeout(pingTimer);probe.reset();setLatencyMs(null);actions.current.bind(null);
       authTimer = setTimeout(() => current.close(), 10000);
       current.onopen = () => { if (!active) return current.close(); current.send(JSON.stringify({ type: "auth", token: session.token })); };
       current.onmessage = event => {
         if (!active || current !== socket) return;
-        lastPong = Date.now();
-        if (event.data === "pong") {if(pingAt){setLatencyMs(Math.max(1,Math.round(performance.now()-pingAt)));pingAt=0;}return;}
+        if (event.data === "pong") {if(probe.startedAt !== null)setLatencyMs(probe.complete(performance.now()));return;}
         try {
           const data = JSON.parse(event.data);
           if (data.type === "expired") return expire(data.error);
@@ -74,13 +85,14 @@ export function useLiveRoom(session: { code: string; token: string } | null, onV
           if (data.type === "view" && data.view?.code === session.code) {
             failures = 0; clearTimeout(authTimer); clearTimeout(fallbackTimer); setConnection("live"); callbacks.current.onView(data.view,session.token);
             if(data.protocol>=2&&!actionSenderBound){actions.current.bind(frame=>{if(current!==socket||current.readyState!==WebSocket.OPEN)throw new Error("Socket unavailable");current.send(frame);});actionSenderBound=true;}
-            if(!pingSent){pingSent=true;pingAt=performance.now();current.send("ping");}
+            if(!pingSent){pingSent=true;heartbeat();}
           }
         } catch { /* malformed frames never replace a valid hand */ }
       };
       current.onclose = () => {
         if (!active || socket !== current) return;
         actions.current.bind(null);setLatencyMs(null);
+        clearTimeout(pingTimer);probe.reset();
         clearTimeout(authTimer); failures++; setConnection(navigator.onLine ? "reconnecting" : "offline");
         if (failures >= 2) { clearTimeout(fallbackTimer); fallbackTimer = setTimeout(fallback, 0); }
         reconnectTimer = setTimeout(connect, Math.min(12000, 700 * 2 ** Math.min(failures - 1, 5)) + Math.random() * 300);
@@ -88,20 +100,16 @@ export function useLiveRoom(session: { code: string; token: string } | null, onV
       current.onerror = () => { current.close(); };
     };
     const refresh = () => {
-      if (!active || document.hidden) return;
-      if (socket?.readyState === WebSocket.OPEN) { lastPong = Date.now(); socket.send(JSON.stringify({ type: "resync" })); }
+      if (!active) return;
+      if (document.hidden) { schedulePing(); return; }
+      if (socket?.readyState === WebSocket.OPEN) { heartbeat(); if(socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify({ type: "resync" })); }
       else { failures = 0; connect(); }
     };
     const offline = () => { actions.current.bind(null);setLatencyMs(null);setConnection("offline"); socket?.close(); };
     retry.current = refresh;
     window.addEventListener("online", refresh); window.addEventListener("offline", offline); window.addEventListener("pageshow", refresh); document.addEventListener("visibilitychange", refresh);
-    const heartbeat = setInterval(() => {
-      if (socket?.readyState !== WebSocket.OPEN) return;
-      if (!document.hidden && Date.now() - lastPong > 45000) { socket.close(); return; }
-      pingAt=performance.now();socket.send("ping");
-    }, 20000);
     connect();
-    return () => { active = false; actions.current.bind(null);clearTimeout(reconnectTimer); clearTimeout(authTimer); clearTimeout(fallbackTimer); clearInterval(heartbeat); socket?.close(1000); window.removeEventListener("online", refresh); window.removeEventListener("offline", offline); window.removeEventListener("pageshow", refresh); document.removeEventListener("visibilitychange", refresh); };
+    return () => { active = false; actions.current.bind(null);clearTimeout(reconnectTimer); clearTimeout(authTimer); clearTimeout(fallbackTimer); clearTimeout(pingTimer); probe.reset(); socket?.close(1000); window.removeEventListener("online", refresh); window.removeEventListener("offline", offline); window.removeEventListener("pageshow", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, [session?.code, session?.token]);
   return { connection, latencyMs, reconnect: () => retry.current(), sendAction:<T,>(payload:Record<string,unknown>)=>actions.current.send<T>(payload) };
 }

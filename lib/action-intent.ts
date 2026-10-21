@@ -11,10 +11,10 @@ export function actionKey(room: Room, id: string): string {
     g?.knockout?.player,!!room.pause,(p?.hand || []).map(c => c.id).sort()]);
 }
 
-const independent = new Set(["sort","uno","pause","autoplay","claimHost","leave","kick","social","ready","config","seats","addBots","removeBot"]);
+const independent = new Set(["sort","uno","pause","autoplay","claimHost","leave","kick","social","ready","config","seats","addBots","removeBot","devUnlock","devCard","devRoulette","devScore"]);
 const turnActions = new Set(["play","draw","catch","chooseZero","chooseSeven","skipSeven","target","pick","color","drawRoulette","reset"]);
 export function canRebaseAction(room: Room, id: string, action: Action): boolean {
-  if (action.type === "jump") return action.top === room.game?.jump?.top && jumpCards(room,id).some(c => c.id === action.card);
+  if (action.type === "jump") { const eligible = jumpCards(room,id), ids = Array.isArray(action.cards) ? action.cards : [action.card]; return action.top === room.game?.jump?.top && ids.length > 0 && ids.every(id => eligible.some(c => c.id === id)); }
   if (independent.has(action.type)) return true;
   return turnActions.has(action.type) && typeof action.actionKey === "string" && action.actionKey === actionKey(room,id);
 }

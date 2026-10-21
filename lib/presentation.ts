@@ -4,7 +4,7 @@ export const TRANSFER_TIMING = {
 } as const;
 export type AttackCue = { from: string; to: string; fromName: string; toName: string; amount: number; total: number; chain: number[] };
 export type JumpCue = { from: string; to: string; fromName: string; toName: string };
-export type EffectEvent = { id: number; text: string; effect?: string; cue?: AttackCue; jump?: JumpCue };
+export type EffectEvent = { id: number; text: string; effect?: string; cue?: AttackCue; jump?: JumpCue; copies?: number };
 
 // Visual/audio lifetimes only. They never delay a legal game action.
 // These cover complete announcement WAVs when no newer action interrupts.

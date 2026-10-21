@@ -90,10 +90,10 @@ test('spectators cannot play, draw, sort, catch or use autoplay; host controls a
   const before=r.game.placements.length;act('A',{type:'leave'});assert.equal(r.game.placements.length,before);assert.equal(r.host,'B');assert.equal(r.status,'playing');
 });
 
-test('knockouts are retained separately and do not turn the last active player into a winner', t => {
+test('the earliest knockout is last while the final survivor keeps a separate placement', t => {
   const {r,act}=setup(t);r.players[0].hand=Array.from({length:24},()=>card(5,'blue'));r.config.drawMode='single';
   r.game.deck=[card(6)];r.players[0].autoplay=true;act('A',{type:'draw'},{hostOffline:false,automated:true});assert.equal(r.players[0].autoplay,false);assert.equal(r.status,'playing');assert.equal(r.game.placements[0].kind,'knockout');
-  act('B',{type:'play',card:r.players[1].hand[0].id});assert.equal(r.game.winner,'B');assert.equal(r.game.loser,'C');assert.equal(r.game.placements.find(e=>e.player==='B').rank,1);
+  act('B',{type:'play',card:r.players[1].hand[0].id});assert.equal(r.game.winner,'B');assert.equal(r.game.loser,'A');assert.equal(r.game.placements.find(e=>e.player==='B').rank,1);
   assert.equal(r.game.placements.at(-1).rank,3);
 });
 

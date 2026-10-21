@@ -16,7 +16,7 @@ export async function commitRoomAction(initial:RoomRow,id:string,action:Action,c
     if(room.actions.includes(String(action.actionId))) return {row,committed:false};
     if(action.version!==version && !canRebaseAction(room,id,action)) return {row,committed:false,conflict:"changed"};
     applyAction(room,id,action,context(room));
-    if(!["sort","uno","claimHost","social"].includes(action.type)) room.botAt=Date.now();
+    if(!["sort","uno","claimHost","social","devUnlock","devCard","devRoulette","devScore"].includes(action.type)) room.botAt=Date.now();
     room.actions.push(String(action.actionId));room.actions=room.actions.slice(-100);
     if(await storage.save(row)) return {row:{room,version:version+1},committed:true};
     const latest=await storage.read();if(!latest) return {row,committed:false,conflict:"expired"};

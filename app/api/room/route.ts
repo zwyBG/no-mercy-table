@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { advanceRoom, applyAction, botAction, createRoom, log, publicView, DEFAULT_CONFIG, type Room, type Player, type Action } from "@/lib/game";
 import { commitRoomAction } from "@/lib/room-commit";
 import { validRoomCommand } from "@/lib/room-command";
+import { DEVELOPER_ACTIONS, verifyDeveloperPassword } from "@/lib/developer-access";
 
 export const dynamic = "force-dynamic";
 const response = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store, private", "X-Content-Type-Options": "nosniff" } });
@@ -84,7 +85,8 @@ export async function POST(request: Request) {
       await publish(code); return response(publicView(room, p.id, timestamps, version + 1));
     }
     if (typeof a.actionId !== "string" || a.actionId.length > 100) return response({ error: "操作凭证无效" }, 400);
-    const committed = await commitRoomAction(row,p.id,a,current => ({hostOffline:Date.now()-(timestamps[current.host]||0)>45000,offlineIds:current.players.filter(q=>!q.bot&&Date.now()-(timestamps[q.id]||0)>45000).map(q=>q.id)}),{
+    const developerAuthorized = DEVELOPER_ACTIONS.has(a.type) && await verifyDeveloperPassword(a.password,env.DEVELOPER_PASSWORD_HASH);
+    const committed = await commitRoomAction(row,p.id,a,current => ({developerAuthorized,hostOffline:Date.now()-(timestamps[current.host]||0)>45000,offlineIds:current.players.filter(q=>!q.bot&&Date.now()-(timestamps[q.id]||0)>45000).map(q=>q.id)}),{
       read:()=>read(code),
       save:async current => {
         const result=await database().prepare("UPDATE rooms SET state = ?, version = version + 1, updated_at = ? WHERE code = ? AND version = ?").bind(JSON.stringify(current.room),Date.now(),code,current.version).run();

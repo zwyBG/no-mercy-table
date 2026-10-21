@@ -1,0 +1,21 @@
+.developer-panel { width:min(740px,calc(100vw - 28px)); }
+.developer-panel .modal-head { margin-bottom:18px; }
+.developer-enter { margin-top:20px; }
+.developer-tabs { display:flex; gap:5px; padding:4px; border:1px solid #dce2eb; border-radius:11px; background:#f0f3f7; }
+.developer-tabs button { flex:1; padding:11px 8px; border-radius:8px; color:#8995a7; background:transparent; font-size:12px; }
+.developer-tabs button[aria-pressed=true] { color:#5c708f; background:white; box-shadow:0 2px 6px #8797ae12; }
+.developer-section { padding-top:20px; }
+.developer-copy { color:#8491a4; font-size:12px; line-height:1.8; margin-bottom:17px; }.developer-copy strong { color:#60718a; font-weight:600; }
+.developer-hand { display:grid; grid-template-columns:repeat(auto-fill,minmax(66px,1fr)); gap:10px; margin-bottom:22px; max-height:245px; overflow:auto; padding:6px; }
+.developer-card { display:flex; justify-content:center; padding:5px; border:1px solid #e3e7ee; border-radius:9px; background:#f5f7fa; }
+.developer-card[aria-pressed=true] { background:#e0eaf8; border-color:#7e99bd; box-shadow:0 0 0 2px #a5b8d530; }
+.developer-card .playing-card { width:52px; height:78px; min-width:52px; font-size:11px; }.developer-card .card-oval strong { font-size:27px; }.developer-card .card-corner,.developer-card .card-bottom { font-size:11px; }.developer-card .card-caption { font-size:5px; }
+.developer-face-form { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; }.developer-face-form label { flex:1; min-width:74px; display:flex; flex-direction:column; gap:8px; color:#8491a4; font-size:11px; }
+.developer-panel select,.developer-panel input[type=number] { height:43px; border:1px solid #d8dfe9; border-radius:8px; background:#f6f8fb; color:#60718a; padding:0 10px; font-size:12px; width:100%; }
+.developer-face-form>.primary-button { min-height:43px; flex:none; }
+.developer-empty { padding:32px 8px; color:#8d98a8; font-size:12px; text-align:center; }
+.developer-roulette-form { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; margin-bottom:15px; }.developer-roulette-form label { display:flex; flex-direction:column; gap:8px; color:#8491a4; font-size:11px; flex:1; min-width:130px; }.developer-roulette-form button { min-height:43px; }
+.developer-score-row { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #e8ecf2; }.developer-score-row label { flex:1; min-width:0; }.developer-score-row strong { display:block; font-size:12px; font-weight:500; color:#65758d; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.developer-score-row small { display:block; font-size:10px; color:#9aa4b2; margin-top:5px; }.developer-score-row input[type=number] { width:102px; flex:none; }.developer-score-row button { min-height:43px; flex:none; }
+.developer-error,.developer-saved { margin-top:18px; padding:10px 12px; border-radius:8px; font-size:12px; line-height:1.6; }.developer-error { color:#ad6b60; background:#fcf1ee; }.developer-saved { display:flex; gap:7px; align-items:center; color:#63846c; background:#eef6f0; }
+.discard-pile { touch-action:manipulation; user-select:none; }
+@media(max-width:450px) { .developer-panel { padding:22px 18px; }.developer-score-row { gap:8px; }.developer-score-row input[type=number] { width:82px; }.developer-face-form>.primary-button { width:100%; }.developer-hand { grid-template-columns:repeat(auto-fill,minmax(56px,1fr)); gap:7px; }.developer-card { padding:3px; } }

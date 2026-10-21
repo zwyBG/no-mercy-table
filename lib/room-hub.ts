@@ -4,6 +4,7 @@ import { nextRoomWake } from "./room-timing";
 import { commitRoomAction } from "./room-commit";
 import { commandResult, validRoomCommand } from "./room-command";
 import { RoomQueue } from "./room-queue";
+import { DEVELOPER_ACTIONS, verifyDeveloperPassword } from "./developer-access";
 
 type Seat = { player?: string; joinedAt: number };
 type Row = { room: Room; version: number };
@@ -108,7 +109,16 @@ export class RoomHub extends DurableObject<Cloudflare.Env> {
   private async command(row:Row,id:string,action:Action) {
     try {
       const seen=await this.seen();
-      const result=await commitRoomAction(row,id,action,current=>({hostOffline:Date.now()-(seen[current.host]||0)>45000,offlineIds:current.players.filter(p=>!p.bot&&Date.now()-(seen[p.id]||0)>45000).map(p=>p.id)}),{
+      let developerAuthorized = false;
+      if (DEVELOPER_ACTIONS.has(action.type)) {
+        const key = `developer-attempts:${id}`, now = Date.now();
+        const previous = await this.ctx.storage.get<{count:number;until:number}>(key);
+        if (previous && previous.until > now && previous.count >= 8) throw new Error("尝试过于频繁，请 10 分钟后重试");
+        developerAuthorized = await verifyDeveloperPassword(action.password,this.env.DEVELOPER_PASSWORD_HASH);
+        if (developerAuthorized) await this.ctx.storage.delete(key);
+        else await this.ctx.storage.put(key,{count:(previous && previous.until > now ? previous.count : 0)+1,until:previous && previous.until > now ? previous.until : now+600000});
+      }
+      const result=await commitRoomAction(row,id,action,current=>({developerAuthorized,hostOffline:Date.now()-(seen[current.host]||0)>45000,offlineIds:current.players.filter(p=>!p.bot&&Date.now()-(seen[p.id]||0)>45000).map(p=>p.id)}),{
         read:()=>this.read(),save:async current=>{
           const saved=await this.env.DB!.prepare("UPDATE rooms SET state = ?, version = version + 1, updated_at = ? WHERE code = ? AND version = ?").bind(JSON.stringify(current.room),Date.now(),current.room.code,current.version).run();
           return !!saved.meta.changes;

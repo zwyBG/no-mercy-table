@@ -3,8 +3,11 @@ import { TRANSFER_TIMING, ADVANCING_ACTIONS, DRAW_DELIVERY_DURATION, effectDurat
 
 import { sendSocial, publicSocial, type SocialState } from "./social.ts";
 import { actionKey } from "./action-intent.ts";
-import { settleRoundScores } from "./room-scores.ts";
+import { rankedPlacements, settleRoundScores } from "./room-scores.ts";
 import { jumpCards, jumpDirection, type JumpWindow } from "./jump-in.ts";
+import { cardsForAction, matchingCards } from "./card-play.ts";
+import { DEVELOPER_ACTIONS } from "./developer-access.ts";
+import { applyDeveloperAction, controlledRouletteFace } from "./developer-tools.ts";
 
 export type Color = "red" | "yellow" | "green" | "blue";
 export const COLORS: Color[] = ["red", "yellow", "green", "blue"];
@@ -24,6 +27,7 @@ export type Game = { deck: Card[]; discard: Card[]; retired: Card[]; color: Colo
   history?: MatchHistory;
   delivery?: { id: string; player: string; ordinal: number; total: number; mode: string };
   jump?: JumpWindow | null;
+  rouletteControl?: {actor:string;color:Color;hitAt:number;top:string};
 };
 export type Room = { code: string; host: string; config: Config; players: Player[]; status: "lobby" | "dealing" | "playing" | "resolving" | "finished"; game: Game | null; logs: EffectEvent[]; serial: number; actions: string[]; rounds: number; scores?: Record<string,number>; lastScoredRound?: number; nextStarter?: string | null; botAt?: number; presentationUntil?: number; social?: SocialState; pause?: { by: string; at: number } | null };
 export type Action = { type: string; [key: string]: unknown };
@@ -99,9 +103,10 @@ function survivors(r: Room) {
   const g = r.game!; if (r.status !== "playing" || g.knockout || g.pending || g.drawing || g.penalty) return;
   const active = r.players.filter(stillPlaying); if (active.length > 1) return;
   const last = active[0]; g.placements ||= [];
-  g.loser = last?.id || g.placements.findLast(e => e.kind === "knockout")?.player || null;
-  if (last && !g.placements.some(e => e.player === last.id)) g.placements.push({player:last.id,kind:"last",rank:r.players.length,count:last.hand.length,at:Date.now()});
-  const reason = last ? `${last.name} 还剩 ${last.hand.length} 张牌，是本局最后一名` : "所有玩家已结束本局";
+  if (last && !g.placements.some(e => e.player === last.id)) g.placements.push({player:last.id,kind:"last",count:last.hand.length,at:Date.now()});
+  const ordered = rankedPlacements(r), firstOut = g.placements.find(e => e.kind === "knockout");
+  g.loser = ordered.at(-1)?.player || null;
+  const reason = firstOut ? `${player(r,firstOut.player).name} 最先出局，是本局最后一名${last ? `；${last.name} 坚持到最后` : ""}` : last ? `${last.name} 还剩 ${last.hand.length} 张牌，是本局最后一名` : "所有玩家已结束本局";
   g.risk = []; g.result = {candidate:g.winner,revealAt:Date.now()+2200,reason}; r.status = "resolving";
   log(r, reason);
 }
@@ -118,10 +123,11 @@ function eliminate(r: Room, p: Player) {
   g.knockout = { player: p.id, count: p.hand.length, until: Date.now() + 1600, from: g.turn === p.id || g.pending?.actor === p.id || g.pending?.target === p.id ? g.pending?.actor || p.id : null };
   log(r, `${p.name} 达到 ${p.hand.length} 张手牌，被淘汰`, "out");
 }
-function drawOne(r: Room): Card {
+function drawOne(r: Room, choose?: (card:Card)=>boolean): Card {
   const g = r.game!;
   if (!g.deck.length) { const top = g.discard.pop()!; g.deck = shuffle([...g.discard, ...g.retired]); g.discard = [top]; g.retired = []; log(r, "牌堆已重新洗牌"); }
-  const card = g.deck.pop(); assert(card, "牌堆暂时无法抽牌"); return card;
+  const index = choose ? g.deck.findIndex(choose) : -1;
+  const card = index >= 0 ? g.deck.splice(index,1)[0] : g.deck.pop(); assert(card, "牌堆暂时无法抽牌"); return card;
 }
 function receive(r: Room, p: Player, c: Card) {
   const g = r.game!; p.hand.push(c); p.uno = false; g.finishers = g.finishers?.filter(id => id !== p.id);
@@ -135,6 +141,7 @@ function beginTransfer(r: Room, kind: Transfer["kind"], from: string, to: string
 function finishTurn(r: Room, from: string, steps = 1, affected = [from]) {
   if (r.status !== "playing" || r.game!.knockout) return;
   r.game!.pending = null; r.game!.forced = null; r.game!.turn = nextPlayer(r, from, steps);
+  delete r.game!.rouletteControl;
   r.game!.risk = r.players.filter(p => affected.includes(p.id) && stillPlaying(p) && p.hand.length === 1 && !p.uno).map(p => p.id);
 }
 function withdrawSeat(r: Room, p: Player, kicked = false) {
@@ -260,14 +267,19 @@ function advanceRoomInternal(r: Room, now: number): boolean {
   if (r.status === "resolving" && g.result && now >= g.result.revealAt) { g.winner = g.result.candidate; r.status = "finished"; settleRoundScores(r); log(r, g.loser ? `${player(r,g.loser).name} 成为本局最后一名，排位结束` : "本局排位结束", "end"); return true; }
   return false;
 }
-function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unknown, jumpedFrom?: string) {
+function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unknown, jumpedFrom?: string, cards: Card[] = [card]) {
   const g = r.game!;
   if (card.color === "wild" && card.kind !== "roulette") assert(COLORS.includes(color as Color), "请选择接下来的颜色");
-  g.jump = { top: card.id, actor: p.id, direction: g.direction, color: g.color, blocked: [] };
-  g.forced = null; p.hand.splice(p.hand.findIndex(c => c.id === card.id), 1);
+  delete g.rouletteControl;
+  // A batch is equivalent to playing once and self-jumping the remaining
+  // copies. The final copy replaces earlier buffs instead of multiplying them.
+  if (cards.length > 1) { g.penalty = 0; g.lastDraw = 0; g.penaltyChain = []; }
+  g.jump = { top: cards.at(-1)!.id, actor: p.id, direction: g.direction, color: g.color, blocked: [] };
+  g.forced = null; const ids = new Set(cards.map(c => c.id)); p.hand = p.hand.filter(c => !ids.has(c.id));
   if (card.kind === "discard") { const extra = p.hand.filter(c => c.color === card.color); p.hand = p.hand.filter(c => c.color !== card.color); g.discard.push(...extra); }
-  g.discard.push(card); if (card.color !== "wild") g.color = card.color; else if (card.kind !== "roulette") g.color = color as Color;
-  p.uno = p.hand.length === 1 && uno === true; const playEvent = log(r, `${p.name} ${jumpedFrom ? "抢出了" : "出了"}${cardLabel(card)}${p.uno ? " · UNO！" : ""}`, card.kind === "number" ? card.number === 7 ? "seven" : card.number === 0 ? "zero" : jumpedFrom ? "jump" : "play" : card.kind);
+  g.discard.push(...cards); if (card.color !== "wild") g.color = card.color; else if (card.kind !== "roulette") g.color = color as Color;
+  p.uno = p.hand.length === 1 && uno === true; const playEvent = log(r, `${p.name} ${jumpedFrom ? "抢出了" : "出了"}${cardLabel(card)}${cards.length > 1 ? ` ×${cards.length}` : ""}${p.uno ? " · UNO！" : ""}`, card.kind === "number" ? card.number === 7 ? "seven" : card.number === 0 ? "zero" : cards.length > 1 ? "batch" : jumpedFrom ? "jump" : "play" : card.kind);
+  if (cards.length > 1) playEvent.copies = cards.length;
   if (jumpedFrom) playEvent.jump = { from: jumpedFrom, to: p.id, fromName: player(r, jumpedFrom).name, toName: p.name };
   if (!p.hand.length) {
     if (drawValue(card) || card.kind === "roulette") { g.finishers = [...(g.finishers || []), p.id]; log(r, `${p.name} 已出完手牌，等待最后一张效果结算`); }
@@ -283,9 +295,10 @@ function resolvePlay(r: Room, p: Player, card: Card, color?: unknown, uno?: unkn
   if (card.kind === "roulette") { const target = nextPlayer(r, p.id); g.turn = target; g.pending = { kind: "roulette", actor: target }; return; }
   finishTurn(r, p.id, card.kind === "skipall" ? active : card.kind === "skip" || (card.kind === "reverse" && active === 2) ? 2 : 1);
 }
-type ActionContext = { hostOffline: boolean; offlineIds?: string[]; automated?: boolean };
+type ActionContext = { hostOffline: boolean; offlineIds?: string[]; automated?: boolean; developerAuthorized?: boolean };
 export function applyAction(r: Room, id: string, a: Action, context: ActionContext = { hostOffline: false }): Room {
   assert(r.players.some(p => p.id === id && !p.removed), "你已被移出牌桌");
+  if (DEVELOPER_ACTIONS.has(a.type)) return applyDeveloperAction(r,id,a,context.developerAuthorized === true);
   if (a.type === "social") {
     const result = sendSocial(r,id,a.target,a.kind);
     delete r.presentationUntil; if(r.game) {if(r.game.transfer)r.game.transfer=null;delete r.game.delivery;}
@@ -383,12 +396,14 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
     g.risk = g.risk.filter(x => x !== target.id); log(r, `${p.name} 抓到 ${target.name} 漏喊 UNO，罚抽 2 张`); beginDraw(r, target, "catch", 2); return r;
   }
   if (a.type === "jump") {
-    const card = jumpCards(r, id).find(c => c.id === a.card);
-    assert(card && a.top === g.jump?.top, "抢出机会已变化，请按当前牌面操作");
+    const eligible = jumpCards(r,id);
+    assert(eligible.some(c => c.id === a.card) && a.top === g.jump?.top, "抢出机会已变化，请按当前牌面操作");
+    const cards = cardsForAction(p.hand,a), card = cards[0];
+    assert(cards.every(c => eligible.some(q => q.id === c.id)) && a.top === g.jump?.top, "抢出机会已变化，请按当前牌面操作");
     if (card.color === "wild" && card.kind !== "roulette") assert(COLORS.includes(a.color as Color), "请选择接下来的颜色");
     const from = g.jump!.actor, direction = jumpDirection(r, id), previousColor = g.jump!.color;
     g.direction = direction; g.color = previousColor; g.turn = id; g.pending = null; g.penalty = 0; g.lastDraw = 0; g.penaltyChain = []; g.forced = null; g.risk = [];
-    resolvePlay(r, p, card, a.color, a.uno, from); return r;
+    resolvePlay(r, p, card, a.color, a.uno, from, cards); return r;
   }
   if (g.pending) {
     const pending = g.pending;
@@ -409,7 +424,12 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
       if (a.type === "color") { assert(!pending.color && COLORS.includes(a.color as Color), "请选择轮盘颜色"); g.risk = []; pending.color = a.color as Color; pending.drawn = 0; g.color = pending.color; log(r, `${p.name} 选择${COLOR_NAMES[pending.color]}色，请逐张点击牌堆抽牌`); return r; }
       assert(a.type === "drawRoulette" && pending.color, "请先选择颜色，再逐张抽牌");
       g.jump = null;
-      const c = drawOne(r); receive(r, p, c); pending.drawn = (pending.drawn || 0) + 1;
+      const control = g.rouletteControl;
+      const controlled = control && control.actor === pending.actor && control.color === pending.color && control.top === g.discard.at(-1)?.id;
+      const hit = !!control && (pending.drawn || 0) + 1 >= control.hitAt;
+      const raw = drawOne(r, controlled ? card => hit ? card.color === pending.color : card.color !== pending.color : undefined);
+      const c = controlled ? controlledRouletteFace(raw,pending.color,hit) : raw;
+      receive(r, p, c); pending.drawn = (pending.drawn || 0) + 1;
       log(r, `${p.name} 轮盘抽了第 ${pending.drawn} 张${c.color === pending.color ? "，抽中所选颜色" : "，继续抽牌"}`, "take");
       r.presentationUntil = Math.max(r.presentationUntil || 0, Date.now() + DRAW_DELIVERY_DURATION);
       if (!p.out && c.color === pending.color) { finishTurn(r, id); settleFinishers(r); } return r;
@@ -432,7 +452,7 @@ function applyActionInternal(r: Room, id: string, a: Action, context: ActionCont
     if (pending.kind === "take") g.pending = { ...pending, kind: "return" }; else finishTurn(r, pending.actor, 1, [pending.actor, pending.target!]); return r;
   }
   assert(g.turn === id, "还没有轮到你"); assert(a.type === "play" || a.type === "draw", "操作无效"); g.risk = [];
-  if (a.type === "play") { const card = p.hand.find(c => c.id === a.card); assert(card && canPlay(r, card), "这张牌现在不能出"); resolvePlay(r, p, card, a.color, a.uno); return r; }
+  if (a.type === "play") { const cards = cardsForAction(p.hand,a), card = cards[0]; assert(canPlay(r, card), "这张牌现在不能出"); resolvePlay(r, p, card, a.color, a.uno, undefined, cards); return r; }
   if (g.penalty) { const n = g.penalty; log(r, `${p.name} 接受罚抽 ${n} 张，开始逐张抽牌`, "penalty"); beginDraw(r, p, "penalty", n); return r; }
   g.forced = null;
   if (r.config.drawMode === "single") {
@@ -476,5 +496,6 @@ export function botAction(r: Room): { id: string; action: Action } | null {
   const score = (c: Card) => c.kind === "discard" ? p.hand.filter(q => q.color === c.color).length * 20 : c.kind === "number" && c.number === 7 ? 30 : c.color !== "wild" ? 15 : 5;
   playable.sort((a, b) => score(b) - score(a));
   const card = playable[0];
-  return { id, action: card ? { type: "play", card: card.id, color: favoriteColor(), uno: true } : { type: "draw", uno: true } };
+  const copies = card ? matchingCards(p.hand,card.id) : [];
+  return { id, action: card ? { type: "play", card: card.id, ...(copies.length > 1 ? {cards:copies.map(c => c.id)} : {}), color: favoriteColor(), uno: true } : { type: "draw", uno: true } };
 }
